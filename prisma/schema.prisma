@@ -1,0 +1,813 @@
+// webtasarimajansi.net — SEO-first web platformu veri modeli.
+//
+// Tasarım ilkesi: sitedeki her indekslenebilir URL tek bir `Page` satırıdır.
+// SEO skoru, sitemap, sürüm geçmişi, iç link grafiği ve crawler bu tek tabloyu
+// okur. İl/ilçe/hizmet/sektör tabloları yalnızca olgusal veriyi taşır; sayfa
+// içeriği her zaman `Page` üzerindedir (aynı ilin farklı hizmet sayfaları
+// farklı içeriğe sahip olabilsin diye).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Kimlik doğrulama / yetki ────────────────────────────────────────────────
+
+enum Role {
+  ADMIN // Yönetici
+  EDITOR // Editör
+  SEO // SEO Uzmanı
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  username     String?   @unique // isteğe bağlı giriş adı (e-posta yerine)
+  name         String
+  passwordHash String
+  role         Role      @default(EDITOR)
+  active       Boolean   @default(true)
+  failedLogins Int       @default(0)
+  lockedUntil  DateTime?
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sessions Session[]
+  audits   AuditLog[]
+}
+
+model Session {
+  id         String   @id // token'ın SHA-256 özeti; ham token yalnızca çerezde
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  lastSeenAt DateTime @default(now())
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String // ör. "page.update", "login.fail", "settings.update"
+  entity    String?
+  entityId  String?
+  detail    Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+}
+
+model RateLimit {
+  key         String
+  windowStart DateTime
+  count       Int      @default(0)
+
+  @@id([key, windowStart])
+}
+
+// ─── Ayarlar ve şifreli sırlar ───────────────────────────────────────────────
+
+model Setting {
+  key       String   @id // "site" | "seo" | "business" | "integrations" | "robots"
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model Secret {
+  key        String   @id // ör. "gsc.serviceAccount"
+  ciphertext String // AES-256-GCM, base64
+  iv         String
+  tag        String
+  updatedAt  DateTime @updatedAt
+}
+
+// ─── Lokasyon / hizmet / sektör (olgusal veri) ───────────────────────────────
+
+model Province {
+  id             Int        @id // plaka kodu (1–81)
+  name           String
+  slug           String     @unique
+  region         String // coğrafi bölge
+  lat            Float?
+  lng            Float?
+  areaKm2        Int?
+  population     Int? // bilinmiyorsa NULL — tahmin yazılmaz
+  populationYear Int?
+  dataSource     String? // ör. "TürkiyeAPI 2025 (TÜİK ADNKS)"
+  altitude       Int?
+  isCoastal      Boolean?
+  isMetropolitan Boolean?
+  municipalityCount  Int?
+  neighborhoodCount  Int?
+  villageCount       Int?
+  // Editörün girdiği gerçek yerel bilgi (işletme profili, ekonomi, sektörler).
+  // Şehir sayfası içeriğine kaynak olur; özgün içerik kontrolü bunu da dikkate alır.
+  localNotes     String?
+  districts      District[]
+  sectors        Sector[]   @relation("ProvinceSectors")
+  pages          Page[]
+  keywords       Keyword[]
+  updatedAt      DateTime   @updatedAt
+}
+
+model District {
+  id             Int       @id @default(autoincrement())
+  provinceId     Int
+  province       Province  @relation(fields: [provinceId], references: [id])
+  name           String
+  slug           String
+  lat            Float?
+  lng            Float?
+  areaKm2        Int?
+  population     Int?
+  populationYear Int?
+  dataSource     String?
+  neighborhoodCount Int?
+  villageCount   Int?
+  localNotes     String?
+  pages          Page[]
+  keywords       Keyword[]
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([provinceId, slug])
+}
+
+model Service {
+  id                 String    @id @default(cuid())
+  slug               String    @unique // URL'nin ilk parçası: "kurumsal-web-tasarim"
+  name               String // "Kurumsal Web Tasarım"
+  shortName          String?
+  summary            String?
+  sortOrder          Int       @default(0)
+  active             Boolean   @default(true)
+  // Bu hizmet için /{hizmet}/{il} kombinasyon sayfası açılabilir mi?
+  allowLocationPages Boolean   @default(false)
+  showInNav          Boolean   @default(false)
+  pages              Page[]
+  keywords           Keyword[]
+  updatedAt          DateTime  @updatedAt
+}
+
+model Sector {
+  id         String      @id @default(cuid())
+  slug       String      @unique // "restoran" — il altı URL'de kullanılır
+  name       String // "Restoran"
+  sortOrder  Int         @default(0)
+  active     Boolean     @default(true)
+  provinces  Province[]  @relation("ProvinceSectors")
+  pages      Page[]
+  keywords   Keyword[]
+  references Reference[]
+  updatedAt  DateTime    @updatedAt
+}
+
+// ─── Sayfalar (SEO içerik motoru) ────────────────────────────────────────────
+
+enum PageType {
+  HOME
+  SERVICE // /kurumsal-web-tasarim
+  SERVICE_LOCATION // /kurumsal-web-tasarim/sakarya
+  CITY // /web-tasarim/sakarya
+  DISTRICT // /web-tasarim/sakarya/adapazari
+  SECTOR // /restoran-web-tasarimi
+  SECTOR_LOCATION // /web-tasarim/sakarya/restoran
+  BLOG_POST // /blog/web-tasarim-nedir
+  BLOG_INDEX // /blog
+  STATIC // /iletisim, /teklif-al, /kvkk-aydinlatma-metni
+}
+
+enum PageStatus {
+  DRAFT // ziyaretçiye 404
+  PUBLISHED
+  ARCHIVED // ziyaretçiye 404; yönlendirme önerilir
+}
+
+model Page {
+  id     String     @id @default(cuid())
+  path   String     @unique // "/web-tasarim/sakarya" (sonda / yok, ana sayfa "/")
+  type   PageType
+  status PageStatus @default(DRAFT)
+
+  // Etkin indekslenebilirlik = PUBLISHED && robotsIndex && !autoNoindex &&
+  // site genelinde indeksleme açık.
+  robotsIndex       Boolean @default(true)
+  robotsFollow      Boolean @default(true)
+  // Sistem, içerik yetersiz/kopya olduğunda bunu açar (ilçe sayfaları vb.).
+  autoNoindex       Boolean @default(false)
+  autoNoindexReason String?
+
+  name            String // yönetimde ve breadcrumb'da görünen ad
+  breadcrumbLabel String?
+  seoTitle        String? // doluysa başlık şablonunu ezer
+  metaDescription String?
+  h1              String?
+  intro           String? // ilk paragraf (düz metin)
+  body            String? // Markdown; ## ile H2, ### ile H3
+  faq             Json? // [{ q, a }]
+  canonical       String? // boşsa kendi URL'si
+  ogTitle         String?
+  ogDescription   String?
+  ogImageId       String?
+  ogImage         Media?   @relation("PageOgImage", fields: [ogImageId], references: [id], onDelete: SetNull)
+  // Kapatılan otomatik schema türleri (ör. ["FAQPage"])
+  schemaDisabled  String[]
+
+  primaryKeyword    String?
+  secondaryKeywords String[]
+  // Otonom iç link motorunun eklediği ilgili sayfa bağlantıları (sürümlü)
+  relatedLinks      Json?
+
+  // Blog
+  excerpt     String?
+  category    String?
+  authorName  String?
+  publishedAt DateTime?
+
+  serviceId  String?
+  service    Service?  @relation(fields: [serviceId], references: [id])
+  provinceId Int?
+  province   Province? @relation(fields: [provinceId], references: [id])
+  districtId Int?
+  district   District? @relation(fields: [districtId], references: [id])
+  sectorId   String?
+  sector     Sector?   @relation(fields: [sectorId], references: [id])
+
+  // Son analiz sonucu (önbellek; kaynak her zaman analiz motoru)
+  seoScore     Int?
+  contentScore Int?
+  analysis     Json?
+  analyzedAt   DateTime?
+
+  contentUpdatedAt DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  versions      PageVersion[]
+  changes       SeoChangeLog[]
+  keywords      Keyword[]
+  tasks         SeoTask[]
+  aiSuggestions AiSuggestion[]
+
+  @@index([type, status])
+  @@index([provinceId])
+  @@index([serviceId])
+}
+
+model PageVersion {
+  id        String   @id @default(cuid())
+  pageId    String
+  page      Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  version   Int
+  snapshot  Json
+  note      String?
+  userId    String?
+  userName  String?
+  createdAt DateTime @default(now())
+
+  @@unique([pageId, version])
+}
+
+model SeoChangeLog {
+  id        String   @id @default(cuid())
+  pageId    String?
+  page      Page?    @relation(fields: [pageId], references: [id], onDelete: SetNull)
+  path      String
+  field     String
+  before    String?
+  after     String?
+  userId    String?
+  userName  String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([pageId])
+}
+
+// ─── Anahtar kelimeler ve sıralama ───────────────────────────────────────────
+
+enum SearchIntent {
+  INFORMATIONAL // bilgi
+  COMMERCIAL // araştırma / karşılaştırma
+  TRANSACTIONAL // teklif / satın alma
+  NAVIGATIONAL // marka
+  LOCAL // yerel
+}
+
+enum KeywordStatus {
+  ACTIVE
+  PAUSED
+}
+
+model Keyword {
+  id               String         @id @default(cuid())
+  phrase           String
+  normalized       String         @unique // Türkçe küçük harf, tek boşluk
+  intent           SearchIntent   @default(COMMERCIAL)
+  targetPageId     String?
+  targetPage       Page?          @relation(fields: [targetPageId], references: [id], onDelete: SetNull)
+  provinceId       Int?
+  province         Province?      @relation(fields: [provinceId], references: [id])
+  districtId       Int?
+  district         District?      @relation(fields: [districtId], references: [id])
+  serviceId        String?
+  service          Service?       @relation(fields: [serviceId], references: [id])
+  sectorId         String?
+  sector           Sector?        @relation(fields: [sectorId], references: [id])
+  priority         Int            @default(3) // 1 (düşük) – 5 (kritik)
+  targetPosition   Int?
+  currentPosition  Float?
+  previousPosition Float?
+  lastCheckedAt    DateTime?
+  serpUrl          String? // sıralamada görünen URL
+  status           KeywordStatus  @default(ACTIVE)
+  notes            String?
+  // Otonom motor: kaynak (manual | seed | discovered), keşif tarihi, küme ve niyetler
+  source           String         @default("manual")
+  discoveredAt     DateTime?
+  intents          String[]
+  clusterId        String?
+  cluster          KeywordCluster? @relation(fields: [clusterId], references: [id], onDelete: SetNull)
+  // Otonom ajanın son ölçümü ve kararı (28 gün vs önceki 28 gün, Search Console)
+  decision         Json?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  snapshots        RankSnapshot[]
+  tasks            SeoTask[]
+}
+
+enum RankSource {
+  GSC // Search Console ortalama pozisyonu
+  SERP // canlı SERP sağlayıcısı (yapılandırılırsa)
+  MANUAL
+}
+
+model RankSnapshot {
+  id          String     @id @default(cuid())
+  keywordId   String
+  keyword     Keyword    @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+  date        DateTime   @db.Date
+  source      RankSource
+  position    Float? // NULL = o gün gösterim yok
+  clicks      Int        @default(0)
+  impressions Int        @default(0)
+  ctr         Float?
+  url         String?
+  createdAt   DateTime   @default(now())
+
+  @@unique([keywordId, date, source])
+  @@index([date])
+}
+
+// ─── Google Search Console ───────────────────────────────────────────────────
+
+model GscDailyTotal {
+  date        DateTime @id @db.Date
+  clicks      Int
+  impressions Int
+  ctr         Float
+  position    Float
+}
+
+model GscPageDaily {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  page        String
+  clicks      Int
+  impressions Int
+  ctr         Float
+  position    Float
+
+  @@unique([date, page])
+  @@index([page])
+}
+
+model GscQueryDaily {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  query       String
+  page        String
+  clicks      Int
+  impressions Int
+  ctr         Float
+  position    Float
+
+  @@unique([date, query, page])
+  @@index([query])
+  @@index([page])
+}
+
+model GscIndexStatus {
+  url             String    @id
+  verdict         String? // PASS | NEUTRAL | FAIL
+  coverageState   String? // ör. "Crawled - currently not indexed"
+  indexingState   String?
+  robotsTxtState  String?
+  lastCrawlTime   DateTime?
+  googleCanonical String?
+  checkedAt       DateTime  @default(now())
+  raw             Json?
+}
+
+model JobRun {
+  id          String    @id @default(cuid())
+  kind        String // gsc-sync | rank-update | crawl | analyze | opportunities | index-inspect | competitor
+  status      String    @default("running") // running | ok | error | skipped
+  message     String?
+  stats       Json?
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  triggeredBy String?
+  // Kuyruk: queued → running → ok/error; hata olursa runAfter ile yeniden denenir
+  attempts    Int       @default(1)
+  runAfter    DateTime?
+
+  @@index([kind, startedAt])
+  @@index([status, runAfter])
+}
+
+// ─── Crawler / SEO sağlığı ───────────────────────────────────────────────────
+
+enum Severity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+model CrawlRun {
+  id           String       @id @default(cuid())
+  baseUrl      String
+  status       String       @default("running")
+  pagesCrawled Int          @default(0)
+  issueCount   Int          @default(0)
+  healthScore  Int?
+  message      String?
+  startedAt    DateTime     @default(now())
+  finishedAt   DateTime?
+  triggeredBy  String?
+  pages        CrawlPage[]
+  issues       CrawlIssue[]
+}
+
+model CrawlPage {
+  id              String   @id @default(cuid())
+  runId           String
+  run             CrawlRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  url             String
+  status          Int
+  redirectChain   Json?
+  contentType     String?
+  title           String?
+  metaDescription String?
+  canonical       String?
+  robotsMeta      String?
+  xRobotsTag      String?
+  h1              String[]
+  h2Count         Int      @default(0)
+  wordCount       Int      @default(0)
+  contentHash     String?
+  internalLinks   Int      @default(0)
+  externalLinks   Int      @default(0)
+  inlinks         Int      @default(0)
+  images          Int      @default(0)
+  imagesNoAlt     Int      @default(0)
+  schemaTypes     String[]
+  hasViewport     Boolean  @default(false)
+  loadMs          Int?
+  bytes           Int?
+  inSitemap       Boolean  @default(false)
+  indexable       Boolean  @default(false)
+  depth           Int      @default(0)
+
+  @@index([runId])
+}
+
+model CrawlIssue {
+  id       String   @id @default(cuid())
+  runId    String
+  run      CrawlRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  url      String
+  code     String
+  severity Severity
+  message  String
+  detail   Json?
+
+  @@index([runId, severity])
+}
+
+// ─── SEO fırsatları / görevler ───────────────────────────────────────────────
+
+enum TaskStatus {
+  OPEN
+  DONE
+  DISMISSED
+}
+
+model SeoTask {
+  id          String     @id @default(cuid())
+  fingerprint String     @unique // aynı sorunun tekrar üretilmesini engeller
+  code        String
+  severity    Severity
+  impact      Int // 1 düşük, 2 orta, 3 yüksek
+  difficulty  Int // 1 kolay, 2 orta, 3 zor
+  priority    Int // 0–100
+  title       String
+  reason      String
+  solution    String
+  url         String?
+  pageId      String?
+  page        Page?      @relation(fields: [pageId], references: [id], onDelete: SetNull)
+  keywordId   String?
+  keyword     Keyword?   @relation(fields: [keywordId], references: [id], onDelete: SetNull)
+  data        Json?
+  status      TaskStatus @default(OPEN)
+  firstSeenAt DateTime   @default(now())
+  lastSeenAt  DateTime   @default(now())
+  resolvedAt  DateTime?
+
+  @@index([status, priority])
+}
+
+// ─── Rakip analizi ───────────────────────────────────────────────────────────
+
+model Competitor {
+  id        String               @id @default(cuid())
+  domain    String               @unique
+  name      String?
+  notes     String?
+  createdAt DateTime             @default(now())
+  snapshots CompetitorSnapshot[]
+}
+
+model CompetitorSnapshot {
+  id           String     @id @default(cuid())
+  competitorId String
+  competitor   Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  status       String // ok | error | partial
+  data         Json?
+  error        String?
+  createdAt    DateTime   @default(now())
+
+  @@index([competitorId, createdAt])
+}
+
+// ─── Yönlendirme / 404 ───────────────────────────────────────────────────────
+
+model Redirect {
+  id         String    @id @default(cuid())
+  fromPath   String    @unique
+  toPath     String
+  statusCode Int       @default(301)
+  active     Boolean   @default(true)
+  hits       Int       @default(0)
+  lastHitAt  DateTime?
+  note       String?
+  createdBy  String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model NotFoundLog {
+  path          String   @id
+  hits          Int      @default(1)
+  firstSeenAt   DateTime @default(now())
+  lastSeenAt    DateTime @default(now())
+  lastReferrer  String?
+  lastUserAgent String?
+  isBot         Boolean  @default(false)
+  resolved      Boolean  @default(false)
+}
+
+// ─── Medya / referans ────────────────────────────────────────────────────────
+
+model Media {
+  id           String      @id @default(cuid())
+  filename     String      @unique // "web-tasarim-sakarya.webp"
+  originalName String
+  mime         String
+  width        Int
+  height       Int
+  bytes        Int
+  alt          String?
+  title        String?
+  caption      String?
+  variants     Json // [{ file, width, format, bytes }]
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  pagesOg      Page[]      @relation("PageOgImage")
+  references   Reference[]
+}
+
+// Referanslar yalnızca gerçek işler içindir. Sistem örnek referans üretmez.
+model Reference {
+  id          String   @id @default(cuid())
+  name        String
+  url         String?
+  description String?
+  city        String?
+  sectorId    String?
+  sector      Sector?  @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+  imageId     String?
+  image       Media?   @relation(fields: [imageId], references: [id], onDelete: SetNull)
+  published   Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─── Lead / teklif talepleri ─────────────────────────────────────────────────
+
+enum LeadStatus {
+  NEW // Yeni
+  CALLED // Arandı
+  QUOTE_SENT // Teklif gönderildi
+  FOLLOW_UP // Takipte
+  CUSTOMER // Müşteri
+  LOST // Olumsuz
+}
+
+model Lead {
+  id         String     @id @default(cuid())
+  name       String
+  company    String?
+  phone      String
+  email      String?
+  city       String?
+  service    String?
+  message    String?
+  status     LeadStatus @default(NEW)
+  notes      String?
+  sourcePath String?
+  ipHash     String?
+  userAgent  String?
+  consentAt  DateTime
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([status, createdAt])
+}
+
+// ─── Yapay zekâ önerileri (insan onayı zorunlu) ─────────────────────────────
+
+enum SuggestionStatus {
+  PENDING
+  APPROVED // onaylandı ve uygulandı
+  REJECTED
+}
+
+model AiSuggestion {
+  id         String           @id @default(cuid())
+  pageId     String?
+  page       Page?            @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  kind       String // title | meta | h1 | content | internal-links | brief | clustering
+  provider   String
+  input      Json?
+  output     Json
+  status     SuggestionStatus @default(PENDING)
+  createdBy  String?
+  reviewedBy String?
+  createdAt  DateTime         @default(now())
+  reviewedAt DateTime?
+}
+
+// Search Console: cihaz ve ülke kırılımı (günlük). dimension = "device" | "country"
+model GscDimDaily {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  dimension   String
+  value       String
+  clicks      Int
+  impressions Int
+  ctr         Float
+  position    Float
+
+  @@unique([date, dimension, value])
+  @@index([dimension, date])
+}
+
+// IndexNow gönderimleri: gerçek HTTP sonucu ve yeniden deneme planı.
+model IndexNowSubmission {
+  id          String    @id @default(cuid())
+  urls        String[]
+  status      String // ok | failed | skipped | retry
+  httpStatus  Int?
+  message     String
+  attempt     Int       @default(1)
+  nextRetryAt DateTime?
+  trigger     String? // publish | job | retry
+  createdAt   DateTime  @default(now())
+
+  @@index([status, nextRetryAt])
+  @@index([createdAt])
+}
+
+// ─── Otonom SEO motoru ───────────────────────────────────────────────────────
+
+model KeywordCluster {
+  id           String    @id @default(cuid())
+  key          String    @unique // "topic:web-tasarim" | "loc:54" | "loc:54:2071"
+  name         String
+  kind         String // TOPIC | LOCATION
+  intent       String
+  weight       Int       @default(5) // iş değeri 1–10 (kural tabanlı)
+  targetPageId String?
+  provinceId   Int?
+  districtId   Int?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  keywords     Keyword[]
+}
+
+model AutopilotRun {
+  id         String            @id @default(cuid())
+  weekKey    String // 2026-W39
+  status     String            @default("running") // running | ok | error | partial
+  trigger    String? // schedule | manual | cli
+  stages     Json?
+  summary    Json? // haftalık rapor verisi
+  startedAt  DateTime          @default(now())
+  finishedAt DateTime?
+  actions    AutopilotAction[]
+
+  @@index([weekKey])
+}
+
+model AutopilotAction {
+  id              String       @id @default(cuid())
+  runId           String
+  run             AutopilotRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  type            String // TITLE | META | INTERNAL_LINK | BROKEN_LINK | CONTENT | LOCATION | TECH
+  risk            String // AUTO | CONTROLLED | HUMAN
+  status          String // planned | applied | needs_approval | skipped | failed | rolled_back | rejected
+  score           Int
+  title           String
+  reason          String
+  pageId          String?
+  query           String?
+  clusterId       String?
+  proposal        Json?
+  before          Json?
+  after           Json?
+  versionBeforeId String?
+  versionAfterId  String?
+  qualityNotes    String?
+  error           String?
+  createdAt       DateTime     @default(now())
+  appliedAt       DateTime?
+  experiment      Experiment?
+
+  @@index([status])
+}
+
+model Experiment {
+  id          String           @id @default(cuid())
+  actionId    String?          @unique
+  action      AutopilotAction? @relation(fields: [actionId], references: [id], onDelete: SetNull)
+  pageId      String
+  pagePath    String
+  type        String
+  query       String?
+  appliedAt   DateTime
+  baseline    Json // uygulama öncesi 28 gün (GSC) — veri yoksa null alanlar
+  result      Json?
+  outcome     String? // positive | neutral | negative | insufficient
+  status      String           @default("running") // running | evaluated | rolled_back
+  evaluatedAt DateTime?
+  note        String?
+
+  @@index([status, appliedAt])
+}
+
+model EmailLog {
+  id        String   @id @default(cuid())
+  kind      String // weekly | alarm | test
+  to        String
+  subject   String
+  html      String
+  text      String
+  status    String // sent | failed | not_configured | logged
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@index([kind, createdAt])
+}
+
+model AlarmState {
+  key        String    @id
+  active     Boolean   @default(false)
+  detail     String?
+  lastSentAt DateTime?
+  updatedAt  DateTime  @updatedAt
+}

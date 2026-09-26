@@ -1,0 +1,11 @@
+node_modules
+.next
+.next-e2e
+.local
+storage
+.env
+.git
+.env.*
+backups
+deploy/snapshots
+.build

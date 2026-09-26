@@ -1,0 +1,124 @@
+# webtasarimajansi — CI/CD: test → derleme → Docker imaj kontrolü → (yalnızca main'e push) VPS dağıtımı.
+# Testlerden biri başarısız olursa dağıtım YAPILMAZ. Sırlar yalnızca GitHub Secrets'ta;
+# uygulama sırları (Anthropic, Search Console, SMTP) GitHub'a hiç girmez — panelden yönetilir.
+name: CI / Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Aynı dal için eşzamanlı çalıştırma yok; dağıtım yarıda kesilmez.
+concurrency:
+  group: webtasarimajansi-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Lint · Typecheck · Test · Build · Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: webtasarimajansi_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci -d webtasarimajansi_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      # Yalnızca CI'daki geçici test veritabanı — gerçek sır değildir
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/webtasarimajansi_test
+      TEST_DATABASE_URL: postgresql://ci:ci@localhost:5432/webtasarimajansi_test
+      APP_SECRET: ci-only-app-secret-not-used-in-production-000000
+      SITE_URL: https://webtasarimajansi.net
+      EMAIL_TRANSPORT: log
+      AUTOPILOT_SCHEDULER: "off"
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Prisma (generate + migrate + seed)
+        run: |
+          npx prisma generate
+          npx prisma migrate deploy
+          npx prisma db seed
+        env:
+          SEED_ADMIN_EMAIL: ci-admin@example.com
+          SEED_ADMIN_PASSWORD: CiOnlyPassword123
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - name: Production build
+        run: npm run build
+      - name: Docker imajları (araç + web) derleniyor mu?
+        run: |
+          rm -rf .build && mkdir -p .build
+          cp -r .next/standalone .build/standalone
+          cp -r .next/static .build/static
+          docker build -f deploy/Dockerfile.tools -t webtasarimajansi-tools:ci .
+          docker build -f deploy/Dockerfile.web -t webtasarimajansi-web:ci .
+      - name: İstemci paketinde yerel adres yok
+        run: "! grep -rlE 'https?://(localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0)' .next/static"
+
+  deploy:
+    name: VPS dağıtımı (webtasarimajansi)
+    needs: test
+    # Güvenlik anahtarı: sunucu hazırlanıp Settings → Variables'ta DEPLOY_ENABLED=true yapılana kadar dağıtım denenmez
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: production
+      url: https://webtasarimajansi.net
+    concurrency:
+      group: webtasarimajansi-production-deploy
+      cancel-in-progress: false
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+      VPS_PROJECT_PATH: ${{ secrets.VPS_PROJECT_PATH || '/opt/mcht/webtasarimajansi' }}
+    steps:
+      - name: Ayarları doğrula
+        run: |
+          test -n "$VPS_HOST" && test -n "$VPS_USER" || { echo "VPS_HOST / VPS_USER secret'ları eksik"; exit 1; }
+          case "$VPS_PROJECT_PATH" in */webtasarimajansi) ;; *) echo "VPS_PROJECT_PATH */webtasarimajansi olmalı"; exit 1;; esac
+      - name: SSH anahtarı ve sunucu parmak izi
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          # Ortadaki adam saldırısına karşı: sunucu parmak izi secret'tan (ssh-keyscan'e güvenilmez)
+          test -n "$VPS_KNOWN_HOSTS" || { echo "VPS_KNOWN_HOSTS secret'ı gerekli (ssh-keyscan -p PORT HOST çıktısı)"; exit 1; }
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts
+      # Betiğin yeni sürümü origin/main'den okunur; kodu (git reset) betik kendisi günceller,
+      # böylece önceki sürüm doğru kaydedilir ve geri dönüşte koda da dönülür.
+      - name: Dağıt (sunucuda scripts/deploy.sh — kilit, yedek, sağlık kontrolü, otomatik geri dönüş)
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 \
+            "$VPS_USER@$VPS_HOST" \
+            "set -e; cd '$VPS_PROJECT_PATH' && git fetch --prune origin main && t=\$(mktemp /tmp/webtasarimajansi-deploy.XXXXXX) && git show origin/main:scripts/deploy.sh > \$t && DEPLOY_ROOT='$VPS_PROJECT_PATH' WTA_DEPLOY_COPY=1 bash \$t '${{ github.sha }}'"
+      - name: Dışarıdan doğrulama (HTTPS)
+        run: |
+          for p in /health / /sitemap.xml /robots.txt; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "https://webtasarimajansi.net$p")
+            echo "$p → $code"; test "$code" = 200
+          done
+      - name: SSH anahtarını sil
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

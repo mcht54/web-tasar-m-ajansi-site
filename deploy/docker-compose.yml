@@ -1,0 +1,124 @@
+# WEBTASARIMAJANSI — production (aynı VPS'deki diğer projelerden tamamen ayrı).
+# Proje adı, container, network, volume ve env yalnızca bu projeye aittir.
+# Veritabanı hiçbir host portuna açılmaz; web yalnızca 127.0.0.1'e açılır (host Nginx için).
+name: webtasarimajansi
+
+x-app-env: &app-env
+  NODE_ENV: production
+  DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@webtasarimajansi-db:5432/${POSTGRES_DB}
+  SITE_URL: ${SITE_URL}
+  APP_SECRET: ${APP_SECRET}
+  MEDIA_DIR: /app/storage/media
+  APP_INTERNAL_URL: http://webtasarimajansi-web:3300
+  EMAIL_TRANSPORT: ${EMAIL_TRANSPORT:-smtp}
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: webtasarimajansi-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - webtasarimajansi_postgres_data:/var/lib/postgresql/data
+    networks: [webtasarimajansi-db-network]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 512m
+    logging: &logging
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  # Tek seferlik: migration + seed (ilk kurulumda yönetici SEED_ADMIN_* ile oluşur)
+  migrate:
+    image: webtasarimajansi-tools:latest
+    build: { context: .., dockerfile: deploy/Dockerfile.tools }
+    container_name: webtasarimajansi-migrate
+    profiles: ["ops"]
+    restart: "no"
+    environment:
+      <<: *app-env
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+      SEED_ADMIN_USERNAME: ${SEED_ADMIN_USERNAME:-}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+    command: ["sh", "-c", "npx prisma migrate deploy && npx prisma db seed"]
+    depends_on: { db: { condition: service_healthy } }
+    networks: [webtasarimajansi-db-network]
+    logging: *logging
+
+  # Tek seferlik: üretim derlemesi (veritabanına bağlı; çıktı ../.build)
+  builder:
+    image: webtasarimajansi-tools:latest
+    container_name: webtasarimajansi-builder
+    profiles: ["ops"]
+    restart: "no"
+    user: "0:0"
+    environment: *app-env
+    command: ["sh", "-c", "npm run build && rm -rf /out/standalone /out/static && cp -r .next/standalone /out/standalone && cp -r .next/static /out/static && chown -R 1001:1001 /out"]
+    volumes:
+      - ../.build:/out
+    depends_on: { db: { condition: service_healthy } }
+    networks: [webtasarimajansi-db-network, webtasarimajansi-network]
+    logging: *logging
+
+  web:
+    image: webtasarimajansi-web:latest
+    build: { context: .., dockerfile: deploy/Dockerfile.web }
+    container_name: webtasarimajansi-web
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      AUTOPILOT_SCHEDULER: "off" # zamanlayıcı ayrı konteynerde
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3400}:3300"
+    volumes:
+      - webtasarimajansi_media:/app/storage/media
+    depends_on: { db: { condition: service_healthy } }
+    networks: [webtasarimajansi-db-network, webtasarimajansi-network]
+    mem_limit: 768m
+    logging: *logging
+
+  worker:
+    image: webtasarimajansi-tools:latest
+    container_name: webtasarimajansi-worker
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      WORKER_ROLE: worker
+    depends_on: { db: { condition: service_healthy }, web: { condition: service_started } }
+    networks: [webtasarimajansi-db-network, webtasarimajansi-network]
+    mem_limit: 1g
+    cpus: 1.0
+    logging: *logging
+
+  scheduler:
+    image: webtasarimajansi-tools:latest
+    container_name: webtasarimajansi-scheduler
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      WORKER_ROLE: scheduler
+    depends_on: { db: { condition: service_healthy } }
+    networks: [webtasarimajansi-db-network]
+    mem_limit: 256m
+    logging: *logging
+
+networks:
+  # Uygulama ağı (dış internet: Google, Anthropic, IndexNow). Başka projeye bağlı değil.
+  webtasarimajansi-network:
+    name: webtasarimajansi-network
+  # Veritabanı ağı: internete çıkışı yok, yalnızca bu projenin servisleri.
+  webtasarimajansi-db-network:
+    name: webtasarimajansi-db-network
+    internal: true
+
+volumes:
+  webtasarimajansi_postgres_data:
+    name: webtasarimajansi_postgres_data
+  webtasarimajansi_media:
+    name: webtasarimajansi_media

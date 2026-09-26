@@ -1,0 +1,93 @@
+// İş kayıt defteri (runner'dan ayrı dosya: döngüsel import olmasın).
+import { registerJob } from "./runner";
+import { runCrawl } from "../crawler/crawl";
+import { inspectIndexStatus, syncGsc, updateRanksFromGsc } from "../gsc/sync";
+import { runOpportunities } from "../seo/opportunities";
+import { runFullAnalysis } from "../seo/analyzer";
+import { changedPathsSince, processIndexNowRetries, submitIndexNow } from "../seo/indexnow";
+import { db } from "../db";
+import { checkSitemap } from "../seo/sitemap-check";
+import { runAutopilot } from "../autopilot/run";
+import { runAlarms } from "../autopilot/alarms";
+import { sendWeeklyEmail } from "../autopilot/weekly";
+import { sendDailyEmail } from "../autopilot/daily";
+
+/** Son 26 saatte gerçekten değişen (alan logu olan) URL'leri IndexNow ile bildirir. */
+async function indexNowRecent() {
+  const paths = await changedPathsSince(new Date(Date.now() - 26 * 3600_000));
+  const retries = await processIndexNowRetries();
+  const r = paths.length ? await submitIndexNow(paths, fetch, { trigger: "job" }) : null;
+  const message = `${r ? r.message : "Son 26 saatte değişen (ve henüz bildirilmemiş) sayfa yok"} · yeniden deneme: ${retries.due} (başarılı ${retries.ok}, başarısız ${retries.failed})`;
+  // Başarısızlık gizlenmez: gönderim başarısızsa iş de hata olarak kaydedilir
+  if (r && r.status === "failed") throw new Error(message);
+  return { status: (r?.ok ? "ok" : "skipped") as "ok" | "skipped", message };
+}
+
+registerJob("crawl", (by) => runCrawl(by));
+registerJob("gsc-sync", () => syncGsc());
+registerJob("rank-update", () => updateRanksFromGsc());
+registerJob("index-inspect", () => inspectIndexStatus());
+registerJob("opportunities", () => runOpportunities());
+registerJob("indexnow", () => indexNowRecent());
+registerJob("sitemap-check", async () => {
+  const r = await checkSitemap();
+  const msg = `${r.urls} URL denetlendi, ${r.problems.length} sorun`;
+  if (r.urls === 0) throw new Error("Sitemap okunamadı veya boş");
+  if (r.problems.length) throw new Error(`${msg}: ${r.problems.slice(0, 5).map((p) => `${p.url} (${p.problem})`).join("; ")}`);
+  return { message: msg, stats: r };
+});
+registerJob("daily", async (by) => {
+  // Sıra önemli: veri → analiz → görevler. Bir adım başarısız olsa da diğerleri
+  // çalışır; ama iş sonunda BAŞARISIZ olarak kaydedilir (sessiz başarı yok).
+  const steps: { name: string; status: "ok" | "skipped" | "error"; message: string }[] = [];
+  const step = async (name: string, fn: () => Promise<{ message: string; status?: "ok" | "skipped" }>) => {
+    try {
+      const r = await fn();
+      steps.push({ name, status: r.status ?? "ok", message: r.message });
+    } catch (e) {
+      steps.push({ name, status: "error", message: e instanceof Error ? e.message : String(e) });
+    }
+  };
+  await step("Search Console", () => syncGsc());
+  await step("Sıralama", () => updateRanksFromGsc());
+  await step("İndeks durumu", () => inspectIndexStatus());
+  await step("Tarama", () => runCrawl(by));
+  await step("Analiz", async () => {
+    const r = await runFullAnalysis();
+    return { message: `${r.analyzed} sayfa` };
+  });
+  await step("Fırsatlar", () => runOpportunities());
+  await step("IndexNow", () => indexNowRecent());
+  await step("Sitemap doğrulama", async () => {
+    const r = await checkSitemap();
+    if (r.urls === 0) throw new Error("Sitemap okunamadı veya boş");
+    if (r.problems.length) throw new Error(`${r.problems.length} sorun: ${r.problems.slice(0, 3).map((p) => p.problem).join("; ")}`);
+    return { message: `${r.urls} URL sorunsuz` };
+  });
+  const summary = steps.map((s) => `${s.name}: ${s.status === "error" ? "HATA — " : s.status === "skipped" ? "atlandı — " : ""}${s.message}`).join(" | ");
+  const failed = steps.filter((s) => s.status === "error");
+  if (failed.length) throw new Error(`${failed.length} adım başarısız (${failed.map((f) => f.name).join(", ")}) | ${summary}`);
+  return { message: summary, stats: { steps } };
+});
+
+registerJob("autopilot", async (by) => {
+  const r = await runAutopilot({ trigger: by === "zamanlayıcı" || by === "yeniden deneme" ? "schedule" : by === "cli" ? "cli" : "manual" });
+  const msg = `${r.weekKey}: ${r.stages.filter((s) => s.status === "ok").length}/23 aşama tamam, uygulanan ${r.exec.applied ?? 0}`;
+  if (r.errors) throw new Error(`${msg}; ${r.errors} aşama hatalı: ${r.stages.filter((s) => s.status === "error").map((s) => `${s.name} (${s.message})`).join("; ")}`);
+  return { message: msg, stats: { runId: r.id } };
+});
+registerJob("alarms", async () => {
+  const r = await runAlarms();
+  const active = r.checks.filter((c) => c.active);
+  return { message: active.length ? `Aktif alarm: ${active.map((c) => c.key).join(", ")}; gönderilen: ${r.sent.length}` : "Aktif alarm yok", stats: r.checks };
+});
+registerJob("weekly-email", async () => {
+  const r = await sendWeeklyEmail();
+  if (r.status === "failed") throw new Error(r.error ?? "E-posta gönderilemedi");
+  return { status: r.status === "not_configured" ? "skipped" : "ok", message: r.status === "sent" ? "Haftalık rapor gönderildi" : r.status === "logged" ? "Rapor kaydedildi (log)" : `Gönderilemedi: ${r.error}` };
+});
+registerJob("daily-email", async () => {
+  const r = await sendDailyEmail();
+  if (r.status === "failed") throw new Error(r.error ?? "Günlük rapor gönderilemedi");
+  return { status: r.status === "sent" || r.status === "logged" ? "ok" : "skipped", message: r.status === "sent" ? "Günlük SEO ajanı raporu gönderildi" : r.status === "logged" ? "Günlük rapor kaydedildi (log)" : r.status === "duplicate" ? "Bugünün raporu zaten gönderilmiş" : `Gönderilemedi: ${r.error}` };
+});
