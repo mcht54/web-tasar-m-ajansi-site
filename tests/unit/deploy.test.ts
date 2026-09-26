@@ -54,6 +54,17 @@ describe("nginx", () => {
     expect(nginx).not.toMatch(/default_server/);
     expect(nginx.toLowerCase()).not.toContain("pazar");
   });
+
+  it("gerçek istemci IP'si sahte başlıkla değiştirilemez; Upgrade yalnızca gerektiğinde; açık zaman aşımları", () => {
+    const directives = nginx.split("\n").map((l) => l.replace(/#.*/, "")).join("\n");
+    // Giriş hız sınırı X-Forwarded-For'un ilk değerini kullanır: istemcinin gönderdiği değer eklenmemeli
+    expect(directives).toContain("proxy_set_header X-Forwarded-For $remote_addr;");
+    expect(directives).not.toContain("$proxy_add_x_forwarded_for");
+    expect(directives).toMatch(/map \$http_upgrade \$webtasarimajansi_connection \{[^}]*default upgrade;[^}]*''\s+'';/);
+    expect(directives).toContain("proxy_set_header Connection $webtasarimajansi_connection;");
+    expect(directives).not.toMatch(/proxy_set_header Connection "upgrade"/);
+    for (const t of ["proxy_connect_timeout", "proxy_send_timeout", "proxy_read_timeout"]) expect(directives).toMatch(new RegExp(`${t} \\d+s;`));
+  });
 });
 
 describe("dağıtım betikleri", () => {
