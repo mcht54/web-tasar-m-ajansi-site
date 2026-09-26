@@ -40,11 +40,15 @@ describe("docker compose yalıtımı", () => {
 });
 
 describe("nginx", () => {
-  it("yalnızca webtasarimajansi.net server block'ları; kendi sertifikası; Nginx 1.24 uyumlu", () => {
+  it("yalnızca webtasarimajansi.net server block'ları; kendi sertifikası; diğer sitelerle aynı listen (http2 yok)", () => {
     const names = [...nginx.matchAll(/server_name ([^;]+);/g)].flatMap((m) => m[1].split(/\s+/));
     expect(new Set(names)).toEqual(new Set(["webtasarimajansi.net", "www.webtasarimajansi.net"]));
-    expect(nginx).not.toMatch(/http2 on;/); // 1.25.1+ yönergesi
-    expect(nginx).toContain("listen 443 ssl http2;");
+    // Nginx 1.24'te http2 port düzeyindedir: burada açılırsa aynı 443'teki diğer sitelerin davranışı değişir
+    const directives = nginx.split("\n").map((l) => l.replace(/#.*/, "")).join("\n");
+    expect(directives).not.toMatch(/http2/);
+    const listens = [...nginx.matchAll(/^\s*listen ([^;]+);/gm)].map((m) => m[1]);
+    expect(new Set(listens)).toEqual(new Set(["80", "[::]:80", "443 ssl", "[::]:443 ssl"]));
+    expect(directives).not.toMatch(/ipv6only|reuseport|backlog=/); // soket seçenekleri başka blokta tanımlı
     for (const m of nginx.matchAll(/ssl_certificate(?:_key)? ([^;]+);/g)) expect(m[1]).toContain("/etc/letsencrypt/live/webtasarimajansi.net/");
     expect(nginx).toContain("proxy_pass http://127.0.0.1:3400;");
     expect(nginx).not.toMatch(/default_server/);
@@ -101,9 +105,35 @@ describe("scripts/deploy.sh güvenliği", () => {
   });
 });
 
+describe("GHCR imaj mimarisi (sunucuda derleme yok)", () => {
+  const dep = readFileSync("scripts/deploy.sh", "utf8");
+  const code = dep.split("\n").filter((l) => !l.trim().startsWith("#")).join("\n");
+  it("dağıtım betiği imaj derlemez; yalnızca bu projenin GHCR imajlarını commit etiketiyle indirir ve doğrular", () => {
+    expect(code).not.toMatch(/"\$\{COMPOSE\[@\]\}" build|docker build|run --rm builder|npm (ci|run build)/);
+    expect(code).toMatch(/IMAGE_PREFIX:=ghcr\.io\/mcht54\/webtasarimajansi/);
+    expect(code).toMatch(/case "\$IMAGE_PREFIX" in \*\/webtasarimajansi\)/);
+    expect(code).toContain('WEB_REMOTE="$IMAGE_PREFIX-web:$NEW_SHA"');
+    expect(code).toContain('TOOLS_REMOTE="$IMAGE_PREFIX-tools:$NEW_SHA"');
+    expect(code).toContain("org.opencontainers.image.revision");
+    for (const m of code.matchAll(/(?:docker|"\$\{REG\[@\]\}") pull[^\n]*/g)) expect(m[0]).toMatch(/\$(WEB|TOOLS)_REMOTE/);
+    expect(code).toMatch(/"\$\{REG\[@\]\}" pull -q "\$WEB_REMOTE"/);
+    expect(code).toContain('docker image tag "$WEB_REMOTE" "$PROJECT-web:latest"');
+  });
+  it("kayıt defteri kimlik bilgisi projeye özel; disk kontrolü; önbellek yenileme; yalnızca kendi imajlarını temizler", () => {
+    expect(code).toContain('REG=(env DOCKER_CONFIG="$ROOT/.docker" docker)'); // yalnızca giriş/indirme
+    expect(code).not.toMatch(/^export DOCKER_CONFIG/m); // diğer docker komutlarını etkilemez
+    expect(code).toMatch(/snapshot: docker ps başarısız/); // okunamazsa sessizce "değişmedi" demez
+    expect(code).toMatch(/MIN_FREE_GB/);
+    expect(code).toContain("/api/internal/revalidate");
+    expect(code).toMatch(/grep -E "\^\$IMAGE_PREFIX-\(web\|tools\):"/);
+    expect(code).not.toMatch(/docker (image|system|builder) prune(?! -f --filter)/);
+  });
+});
+
 describe("GitHub Actions iş akışı", () => {
   it("dağıtım yalnızca main'e push'ta ve testler geçerse; eşzamanlı dağıtım yok", () => {
-    expect(workflow).toMatch(/deploy:\n[\s\S]*needs: test/);
+    expect(workflow).toMatch(/images:\n[\s\S]*?needs: test/);
+    expect(workflow).toMatch(/deploy:\n[\s\S]*needs: \[test, images\]/);
     expect(workflow).toContain("if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'");
     expect(workflow).toMatch(/group: webtasarimajansi-production-deploy\n\s+cancel-in-progress: false/);
     for (const step of ["npm run lint", "npm run typecheck", "npm test", "npm run build", "deploy/Dockerfile.tools", "deploy/Dockerfile.web"]) expect(workflow).toContain(step);
@@ -117,5 +147,10 @@ describe("GitHub Actions iş akışı", () => {
     expect(wfCode).not.toMatch(/ANTHROPIC|SMTP_PASS|GSC_|sk-ant/i); // uygulama sırları GitHub'a taşınmaz
     expect(workflow).not.toMatch(/down -v|volume rm/);
     expect(workflow).toContain("permissions:\n  contents: read");
+    // GHCR yazma yetkisi yalnızca images işinde; yalnızca bu projenin imaj adları
+    expect(workflow.match(/packages: write/g)).toHaveLength(1);
+    expect(workflow.slice(workflow.indexOf("  images:"), workflow.indexOf("  deploy:"))).toContain("packages: write");
+    for (const m of workflow.matchAll(/ghcr\.io\/[^\s"]+/g)) expect(m[0]).toMatch(/^ghcr\.io(\/\$OWNER\/webtasarimajansi)?$/);
+    expect(workflow).toMatch(/if: always\(\)\n\s+run: docker logout ghcr\.io/);
   });
 });

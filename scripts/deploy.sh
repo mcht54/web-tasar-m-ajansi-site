@@ -6,9 +6,10 @@
 # öncesi/sonrası durumlarını karşılaştırır. Hiçbir zaman "down", "down -v", volume silme
 # veya "git clean" kullanmaz. Production .env Git'ten gelmez, sunucuda kalır.
 #
-# Akış: kilit → kontroller → kod (origin/main) → DB yedeği → imajlar (eski container'lar çalışırken)
-#       → migration (yalnızca ileri, veri silmez) → derleme → yeni container'lar → sağlık kontrolü
-#       → başarısızsa önceki imajlara + koda otomatik dönüş (DB'ye dokunmadan).
+# Akış: kilit → kontroller → kod (origin/main) → GHCR'dan imaj (sunucuda DERLEME YOK) → DB yedeği
+#       → migration (yalnızca ileri, veri silmez) → yeni container'lar → sağlık kontrolü
+#       → önbellek yenileme + ısıtma → başarısızsa önceki imajlara + koda otomatik dönüş (DB'ye dokunmadan).
+# İmajlar GitHub Actions'ta derlenir: ghcr.io/<sahip>/webtasarimajansi-{web,tools}:<commit>.
 set -Eeuo pipefail
 
 # Betik kendi kopyasından çalışır: aşağıdaki "git reset" bu dosyayı değiştirse de
@@ -44,18 +45,36 @@ chmod 600 .env
 set -a; . ./.env; set +a
 for v in POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB APP_SECRET SITE_URL; do [ -n "${!v:-}" ] || { echo ".env: $v boş"; exit 1; }; done
 : "${WEB_PORT:=3400}"
+: "${IMAGE_PREFIX:=ghcr.io/mcht54/webtasarimajansi}"   # yalnızca bu projenin imajları
+case "$IMAGE_PREFIX" in */webtasarimajansi) ;; *) echo "Güvenlik: IMAGE_PREFIX */webtasarimajansi olmalı"; exit 1 ;; esac
+: "${MIN_FREE_GB:=3}"
+# Kayıt defteri kimlik bilgisi (paket özelse) yalnızca bu projenin klasöründe ve yalnızca
+# giriş/indirme komutlarında kullanılır; diğer Docker komutları ve projeler etkilenmez.
+REG=(docker)
+if [ -n "${GHCR_TOKEN:-}" ]; then
+  mkdir -p "$ROOT/.docker" && chmod 700 "$ROOT/.docker"
+  REG=(env DOCKER_CONFIG="$ROOT/.docker" docker)
+fi
+# Boş disk (POSIX df; Docker veri klasörü görünmüyorsa proje kökünün diski)
+DOCKER_DIR=$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || true); [ -d "$DOCKER_DIR" ] || DOCKER_DIR="$ROOT"
+FREE_GB=$(df -Pk "$DOCKER_DIR" | awk 'NR==2 {print int($4/1048576)}')
+[ "${FREE_GB:-0}" -ge "$MIN_FREE_GB" ] || { echo "Disk: yalnızca ${FREE_GB}G boş (en az ${MIN_FREE_GB}G gerekli) — diğer projeleri korumak için durduruldu"; exit 1; }
 
 snapshot() {
-  {
-    echo "# containers"; docker ps -a --format '{{.Names}}|{{.ID}}|{{.Image}}|{{.State}}|{{.Networks}}' | grep -v '^webtasarimajansi-' | sort || true
-    echo "# networks";   docker network ls --format '{{.ID}}|{{.Name}}|{{.Driver}}' | grep -v '|webtasarimajansi-' | sort || true
-    echo "# volumes";    docker volume ls --format '{{.Name}}' | grep -v '^webtasarimajansi_' | sort || true
-    echo "# compose";    docker compose ls -a --format json | tr '}' '\n' | grep -o '"Name":"[^"]*"' | grep -v '"webtasarimajansi"' | sort || true
-  }
+  # Docker'a ulaşılamazsa boş liste üretip "değişmedi" demesin: hata ver
+  local ps nets vols comp
+  ps=$(docker ps -a --format '{{.Names}}|{{.ID}}|{{.Image}}|{{.State}}|{{.Networks}}') || { echo "snapshot: docker ps başarısız" >&2; return 1; }
+  nets=$(docker network ls --format '{{.ID}}|{{.Name}}|{{.Driver}}') || { echo "snapshot: docker network ls başarısız" >&2; return 1; }
+  vols=$(docker volume ls --format '{{.Name}}') || { echo "snapshot: docker volume ls başarısız" >&2; return 1; }
+  comp=$(docker compose ls -a --format json) || { echo "snapshot: docker compose ls başarısız" >&2; return 1; }
+  echo "# containers"; printf '%s\n' "$ps" | grep -v '^webtasarimajansi-' | sort || true
+  echo "# networks";   printf '%s\n' "$nets" | grep -v '|webtasarimajansi-' | sort || true
+  echo "# volumes";    printf '%s\n' "$vols" | grep -v '^webtasarimajansi_' | sort || true
+  echo "# compose";    printf '%s\n' "$comp" | tr '}' '\n' | grep -o '"Name":"[^"]*"' | grep -v '"webtasarimajansi"' | sort || true
 }
 mkdir -p deploy/snapshots backups
 STAMP=$(date +%Y%m%d-%H%M%S)
-snapshot > "deploy/snapshots/others-before-$STAMP.txt"
+snapshot > "deploy/snapshots/others-before-$STAMP.txt" || { echo "Diğer projelerin durumu okunamadı — güvenlik için durduruldu"; exit 1; }
 
 # ── 3. Kod: origin/main (yalnızca izlenen dosyalar; .env/yedekler/.build dokunulmaz) ──
 say "Kod"
@@ -68,6 +87,8 @@ git checkout -q "$BRANCH"
 git reset -q --hard "${TARGET_SHA:-origin/$BRANCH}"
 NEW_SHA=$(git rev-parse HEAD)
 echo "önceki: $PREV_SHA → yeni: $NEW_SHA"
+WEB_REMOTE="$IMAGE_PREFIX-web:$NEW_SHA"
+TOOLS_REMOTE="$IMAGE_PREFIX-tools:$NEW_SHA"
 note "START $PREV_SHA -> $NEW_SHA"
 
 # ── 4. Geri dönüş için mevcut imajları sakla ──
@@ -118,17 +139,19 @@ else
   [ -n "${SEED_ADMIN_PASSWORD:-}" ] || { trap - ERR; echo "İlk kurulum: .env içinde SEED_ADMIN_PASSWORD gerekli"; exit 1; }
 fi
 
-# ── 6. Yeni imajlar (çalışan container'lar durdurulmaz) ──
-say "Araç imajı"
-"${COMPOSE[@]}" build migrate
+# ── 6. İmajlar GHCR'dan (sunucuda derleme yok; çalışan container'lar durdurulmaz) ──
+say "İmajlar: $IMAGE_PREFIX-{web,tools}:$NEW_SHA"
+if [ -n "${GHCR_TOKEN:-}" ]; then printf '%s' "$GHCR_TOKEN" | "${REG[@]}" login ghcr.io -u "${GHCR_USER:?GHCR_USER gerekli}" --password-stdin >/dev/null; fi
+"${REG[@]}" pull -q "$WEB_REMOTE" >/dev/null || rollback "web imajı indirilemedi ($WEB_REMOTE) — CI bu commit için imaj üretti mi?"
+"${REG[@]}" pull -q "$TOOLS_REMOTE" >/dev/null || rollback "araç imajı indirilemedi ($TOOLS_REMOTE)"
+for img in "$WEB_REMOTE" "$TOOLS_REMOTE"; do
+  rev=$(docker image inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$img")
+  [ "$rev" = "$NEW_SHA" ] || rollback "imaj revizyonu uyuşmuyor ($img: $rev)"
+done
+docker image tag "$WEB_REMOTE" "$PROJECT-web:latest"
+docker image tag "$TOOLS_REMOTE" "$PROJECT-tools:latest"
 say "Migration (ileri, eklemeli) + seed (yalnızca eksik kayıtları ekler)"
 "${COMPOSE[@]}" run --rm migrate
-say "Üretim derlemesi"
-mkdir -p .build
-"${COMPOSE[@]}" run --rm builder
-if grep -rlE 'https?://(localhost|127\.0\.0\.1|0\.0\.0\.0)' .build/static >/dev/null 2>&1; then rollback "istemci paketinde yerel adres"; fi
-say "Web imajı"
-"${COMPOSE[@]}" build web
 
 # ── 7. Geçiş + sağlık kontrolü ──
 say "Yeni container'lar"
@@ -149,13 +172,30 @@ for c in web worker scheduler db; do
   echo "  $PROJECT-$c: $st"
   case "$st" in running\ 0|running\ 1) ;; *) rollback "$PROJECT-$c çalışmıyor veya yeniden başlıyor ($st)";; esac
 done
+# İmaj CI'da derlendiği için önceden oluşturulmuş sayfalar CI verisindendir: uygulama
+# önbelleğini hemen geçersiz kıl (production veritabanından yeniden oluşturulsun) ve ısıt.
+say "Önbellek yenileme + ısıtma"
+KEYHEX=$(printf '%s' "hmac:$APP_SECRET" | openssl dgst -sha256 -binary | od -An -tx1 | tr -d ' \n')
+TOKEN=$(printf '%s' "internal-revalidate" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:$KEYHEX" | awk '{print $NF}')
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "x-internal-token: $TOKEN" "http://127.0.0.1:$WEB_PORT/api/internal/revalidate" || true)
+[ "$code" = 200 ] || rollback "önbellek yenilenemedi (HTTP $code) — APP_SECRET uyuşmuyor olabilir"
+# Mutlak URL → yol (https://alan/a/b → /a/b; https://alan/ → /)
+path_of() { local x=${1#*://}; case "$x" in */*) echo "/${x#*/}" ;; *) echo "/" ;; esac; }
+lget() { curl -fsS -H "Host: ${SITE_URL#*://}" -H "X-Forwarded-Proto: https" "http://127.0.0.1:$WEB_PORT$1"; }
+warm=0
+for sm in $(lget /sitemap.xml | grep -o '<loc>[^<]*</loc>' | sed 's/<[^>]*>//g'); do
+  for u in $(lget "$(path_of "$sm")" 2>/dev/null | grep -o '<loc>[^<]*</loc>' | sed 's/<[^>]*>//g' | head -500); do
+    lget "$(path_of "$u")" >/dev/null 2>&1 && warm=$((warm+1))
+  done
+done
+echo "  ısıtılan sayfa: $warm"
 HTML=$(curl -fsS -H "Host: ${SITE_URL#*://}" "http://127.0.0.1:$WEB_PORT/")
 echo "$HTML" | grep -qE '(localhost|127\.0\.0\.1|0\.0\.0\.0)' && rollback "HTML'de yerel adres"
 trap - ERR
 
 # ── 8. Diğer projeler değişmedi mi? ──
 say "Diğer projeler (izolasyon)"
-snapshot > "deploy/snapshots/others-after-$STAMP.txt"
+snapshot > "deploy/snapshots/others-after-$STAMP.txt" || { echo "Diğer projelerin son durumu okunamadı — elle kontrol edin"; exit 2; }
 if diff -u "deploy/snapshots/others-before-$STAMP.txt" "deploy/snapshots/others-after-$STAMP.txt"; then
   echo "✓ Diğer projelerin container, network, volume ve compose durumu AYNI."
 else
@@ -163,6 +203,10 @@ else
 fi
 echo "$NEW_SHA" > "$ROOT/.last-successful-deploy"
 note "OK $NEW_SHA"
-docker image prune -f --filter "label=com.docker.compose.project=$PROJECT" >/dev/null 2>&1 || true
+# Disk: yalnızca bu projenin eski GHCR imajlarını sil (şimdiki ve önceki sürüm korunur)
+KEEP="$(docker image inspect -f '{{.Id}}' "$PROJECT-web:latest" "$PROJECT-tools:latest" "$PROJECT-web:previous" "$PROJECT-tools:previous" 2>/dev/null | sort -u)"
+for ref in $(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -E "^$IMAGE_PREFIX-(web|tools):" || true); do
+  id=$(docker image inspect -f '{{.Id}}' "$ref"); echo "$KEEP" | grep -q "$id" || docker image rm "$ref" >/dev/null 2>&1 || true
+done
 say "Dağıtım başarılı: $NEW_SHA"
 "${COMPOSE[@]}" ps

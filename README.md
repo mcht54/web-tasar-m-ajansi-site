@@ -121,10 +121,15 @@ schema'sı hiçbir zaman üretilmez.
 ```
 kod değişikliği → git commit → git push (main)
       → GitHub Actions: lint · typecheck · test · build · Docker imaj kontrolü
-      → (hepsi geçerse) SSH → /opt/mcht/webtasarimajansi/scripts/deploy.sh
-      → yedek → migration → derleme → yeni container'lar → sağlık kontrolü
-      → başarısızsa önceki sürüme otomatik dönüş
+      → images: webtasarimajansi-{web,tools}:<commit> → ghcr.io/mcht54/…  (sunucuda DERLEME YOK)
+      → (DEPLOY_ENABLED=true ise) SSH → /opt/mcht/webtasarimajansi/scripts/deploy.sh
+      → GHCR'dan indir + commit doğrula → yedek → migration → yeni container'lar
+      → sağlık kontrolü → önbellek yenileme + ısıtma → başarısızsa önceki sürüme otomatik dönüş
 ```
+
+**Neden GHCR?** Aynı sunucuda başka projeler de çalışıyor; Next.js derlemesi ve `npm ci` anlık 1,5–2 GB RAM ve birkaç GB disk ister. Derleme GitHub Actions'ta yapılır, sunucu yalnızca hazır imajı indirir. İmajlar derleme sırasında geçici bir veritabanıyla önceden oluşturulur; dağıtım bitince uygulama önbelleği geçersiz kılınır ve sayfalar production veritabanından yeniden oluşturulur (eski/örnek içerik yayında kalmaz).
+
+**GHCR paket görünürlüğü:** İlk `images` çalıştırmasından sonra GitHub → Packages altında `webtasarimajansi-web` ve `webtasarimajansi-tools` görünür. Public bırakılabilir (kaynak kod zaten public; imajlarda sır yoktur, sırlar çalışma zamanında `.env` ve veritabanından gelir). Private yapılırsa sunucudaki `.env` içine `GHCR_USER` ve yalnızca `read:packages` yetkili bir `GHCR_TOKEN` girilir; kimlik bilgisi yalnızca `/opt/mcht/webtasarimajansi/.docker` altında tutulur.
 
 **Günlük geliştirme**
 
@@ -175,6 +180,7 @@ bash deploy/install-cron.sh
 
 **`scripts/deploy.sh` güvenceleri**
 - Yalnızca `*/webtasarimajansi` kökünde ve `docker compose -p webtasarimajansi -f deploy/docker-compose.yml --env-file .env` ile çalışır; `down`, `down -v`, volume silme, `git clean` yoktur.
+- Sunucuda imaj derlemez; yalnızca `ghcr.io/mcht54/webtasarimajansi-{web,tools}:<commit>` indirir, imajdaki `org.opencontainers.image.revision` etiketini commit ile karşılaştırır. Boş disk `MIN_FREE_GB`'ın (varsayılan 3) altındaysa başlamaz. Eski imajlardan yalnızca bu projeninkileri siler (şimdiki ve önceki sürüm korunur).
 - Diğer projelerin container/network/volume/compose durumu öncesi–sonrası karşılaştırılır (`deploy/snapshots/`).
 - Migration'dan önce veritabanı yedeği (`backups/`, varsayılan 7 gün; `BACKUP_RETENTION_DAYS`).
 - Yeni imajlar eski container'lar çalışırken derlenir; geçişte yalnızca container'lar yeniden oluşturulur (birkaç saniyelik kesinti).

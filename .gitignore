@@ -80,4 +80,5 @@ postgres_data/
 /.deploy.lock
 /deploy-history.log
 /.last-successful-deploy
+/.docker/
 /.claude/settings.local.json

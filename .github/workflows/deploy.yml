@@ -1,4 +1,5 @@
-# webtasarimajansi — CI/CD: test → derleme → Docker imaj kontrolü → (yalnızca main'e push) VPS dağıtımı.
+# webtasarimajansi — CI/CD: test → derleme → Docker imaj kontrolü → (main'e push) imajlar GHCR'a
+# → (DEPLOY_ENABLED=true ise) VPS dağıtımı. Sunucu imajı DERLEMEZ, yalnızca GHCR'dan indirir.
 # Testlerden biri başarısız olursa dağıtım YAPILMAZ. Sırlar yalnızca GitHub Secrets'ta;
 # uygulama sırları (Anthropic, Search Console, SMTP) GitHub'a hiç girmez — panelden yönetilir.
 name: CI / Deploy
@@ -73,9 +74,70 @@ jobs:
       - name: İstemci paketinde yerel adres yok
         run: "! grep -rlE 'https?://(localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0)' .next/static"
 
+  images:
+    name: İmajlar → GHCR (webtasarimajansi-web, webtasarimajansi-tools)
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write # yalnızca bu işte: GHCR'a imaj yazma
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: webtasarimajansi_build
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci -d webtasarimajansi_build"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      # Geçici derleme veritabanı (önceden oluşturulan sayfalar içindir; dağıtımda production verisiyle yenilenir)
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/webtasarimajansi_build
+      APP_SECRET: ci-only-app-secret-not-used-in-production-000000
+      SITE_URL: https://webtasarimajansi.net
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Derleme veritabanı
+        run: |
+          npx prisma generate
+          npx prisma migrate deploy
+          npx prisma db seed
+        env:
+          SEED_ADMIN_EMAIL: build-admin@example.com
+          SEED_ADMIN_PASSWORD: BuildOnlyPassword123
+      - name: Production build
+        run: |
+          npm run build
+          # (set -e altında "! grep" hatayı yutar; açık kontrol)
+          if grep -rlE 'https?://(localhost|127\.0\.0\.1|0\.0\.0\.0)' .next/static; then echo "İstemci paketinde yerel adres"; exit 1; fi
+          rm -rf .build && mkdir -p .build && cp -r .next/standalone .build/standalone && cp -r .next/static .build/static
+      - name: GHCR girişi
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: İmajları derle ve gönder (etiket = commit)
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          PREFIX="ghcr.io/$OWNER/webtasarimajansi"
+          LABELS=(--label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" --label "org.opencontainers.image.revision=${{ github.sha }}")
+          docker build -f deploy/Dockerfile.tools "${LABELS[@]}" -t "$PREFIX-tools:${{ github.sha }}" -t "$PREFIX-tools:main" .
+          docker build -f deploy/Dockerfile.web   "${LABELS[@]}" -t "$PREFIX-web:${{ github.sha }}"   -t "$PREFIX-web:main" .
+          for i in tools web; do docker push "$PREFIX-$i:${{ github.sha }}"; docker push "$PREFIX-$i:main"; done
+      - name: GHCR oturumunu kapat
+        if: always()
+        run: docker logout ghcr.io
+
   deploy:
     name: VPS dağıtımı (webtasarimajansi)
-    needs: test
+    needs: [test, images]
     # Güvenlik anahtarı: sunucu hazırlanıp Settings → Variables'ta DEPLOY_ENABLED=true yapılana kadar dağıtım denenmez
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest

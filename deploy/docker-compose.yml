@@ -51,7 +51,8 @@ services:
     networks: [webtasarimajansi-db-network]
     logging: *logging
 
-  # Tek seferlik: üretim derlemesi (veritabanına bağlı; çıktı ../.build)
+  # Tek seferlik: yerel/acil durum derlemesi (veritabanına bağlı; çıktı ../.build).
+  # Production'da KULLANILMAZ: imajlar GitHub Actions'ta derlenip GHCR'dan indirilir.
   builder:
     image: webtasarimajansi-tools:latest
     container_name: webtasarimajansi-builder
