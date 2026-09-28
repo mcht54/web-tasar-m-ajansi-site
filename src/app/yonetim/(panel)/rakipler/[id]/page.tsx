@@ -8,6 +8,8 @@ import { SERVICE_CATALOG } from "@/lib/content/catalog";
 import type { CrawlStats } from "@/lib/competitors/crawl";
 import { Badge, Card, Notice, PageTitle, Stat, Table, fmtDate, fmtNum } from "@/components/admin/ui";
 import { analyzeCompetitorAction, deleteCompetitorAction, toggleCompetitorAction } from "../actions";
+import { SubmitButton } from "@/components/admin/SubmitButton";
+import { isCrawling } from "@/lib/competitors/lock";
 
 export const metadata = { title: "Rakip ayrıntısı" };
 
@@ -40,7 +42,8 @@ export default async function CompetitorDetail(props: PageProps<"/yonetim/rakipl
   await requireUser("seo");
   const { id } = await props.params;
   const sp = await props.searchParams;
-  const c = await db.competitor.findUnique({ where: { id }, include: { snapshots: { orderBy: { createdAt: "desc" }, take: 5 } } });
+  const c = await db.competitor.findUnique({ where: { id }, include: { snapshots: { where: { status: { not: "running" } }, orderBy: { createdAt: "desc" }, take: 5 } } });
+  const crawling = await isCrawling(id);
   if (!c) notFound();
   const tab = TABS.find(([k]) => k === sp.sekme)?.[0] ?? "firsatlar";
   const [pages, changes, { findings, hasGsc }, proposals, ourPages] = await Promise.all([
@@ -50,18 +53,22 @@ export default async function CompetitorDetail(props: PageProps<"/yonetim/rakipl
     db.autopilotAction.findMany({ where: { source: "competitor", proposal: { path: ["competitors"], array_contains: [c.domain] } }, orderBy: { createdAt: "desc" }, take: 50 }),
     db.page.findMany({ where: { status: "PUBLISHED" }, select: { path: true, type: true, metaDescription: true, h1: true } }),
   ]);
-  const live = pages.filter((p) => p.status === 200 && !p.removedAt);
+  const live = pages.filter((p) => p.status === 200 && !p.removedAt && !p.duplicateOf);
+  const redirects = pages.filter((p) => p.status >= 300 && p.status < 400);
+  const duplicates = pages.filter((p) => p.duplicateOf);
   const s = c.snapshots[0]?.data as CrawlStats | undefined;
   return (
     <>
       <PageTitle title={c.name || c.domain} desc={<>{c.domain} · son tarama {c.lastCrawlAt ? fmtDate(c.lastCrawlAt, true) : "henüz yok"}{c.lastStatus ? ` · HTTP ${c.lastStatus}` : ""}</>}
         actions={<div className="flex flex-wrap gap-2">
-          <form action={analyzeCompetitorAction}><input type="hidden" name="id" value={c.id} /><button className="rounded-full bg-ink px-4 py-2 text-paper">Şimdi tara</button></form>
+          <form action={analyzeCompetitorAction}><input type="hidden" name="id" value={c.id} /><SubmitButton pending="Tarama kuyruğa alınıyor…" className="rounded-full bg-ink px-4 py-2 text-paper">Şimdi tara</SubmitButton></form>
           <form action={toggleCompetitorAction}><input type="hidden" name="id" value={c.id} /><button className="rounded-full border border-line px-4 py-2">{c.status === "paused" ? "Etkinleştir" : "Duraklat"}</button></form>
           <form action={deleteCompetitorAction}><input type="hidden" name="id" value={c.id} /><button className="rounded-full border border-line px-4 py-2 text-bad">Sil</button></form>
           <Link href="/yonetim/rakipler" className="rounded-full border border-line px-4 py-2">← Rakipler</Link>
         </div>} />
-      {sp.basladi && <div className="mb-4"><Notice>Tarama arka planda başladı (robots.txt&apos;ye uyarak, istekler arasında bekleyerek). Birkaç dakika sonra yenileyin.</Notice></div>}
+      {crawling ? <div className="mb-4" data-crawl-state="running"><Notice tone="warn">Bu rakip şu anda taranıyor.</Notice></div>
+        : c.crawlRequestedAt ? <div className="mb-4" data-crawl-state="queued"><Notice>Tarama kuyruğa alındı. Worker robots.txt&apos;ye uyarak, istekler arasında bekleyerek tarar; birkaç dakika sonra yenileyin.</Notice></div>
+        : sp.kuyruk ? <div className="mb-4"><Notice tone="ok">Tarama kuyruğa alındı.</Notice></div> : null}
       {c.lastError && <div className="mb-4"><Notice tone="bad">{c.lastError}</Notice></div>}
       {!hasGsc && <div className="mb-4"><Notice tone="warn">Search Console bağlı değil: talep bazlı karşılaştırma sınırlı; talep sinyali 0 değil “bilinmiyor” sayılır.</Notice></div>}
 
@@ -103,6 +110,8 @@ export default async function CompetitorDetail(props: PageProps<"/yonetim/rakipl
             <tr><td>Tekrarlanan title</td><td>{live.length - new Set(live.map((p) => p.title)).size}</td><td>—</td></tr>
             <tr><td>İnce içerik (&lt;250 kelime)</td><td>{live.filter((p) => p.wordCount < 250).length}</td><td>İçerik Planı</td></tr>
             <tr><td>Schema türleri</td><td className="text-xs">{s?.schemaTypes.join(", ") || "—"}</td><td className="text-xs">Organization, WebSite, BreadcrumbList, Service, FAQPage (koşullu), LocalBusiness (işletme bilgisi tamsa)</td></tr>
+            <tr><td>HTTP yönlendirmesi (kaynak adres; sayfa sayılmaz)</td><td>{redirects.length}{s?.redirectsExternal ? ` (dış siteye ${s.redirectsExternal})` : ""}</td><td>—</td></tr>
+            <tr><td>Aynı içerik (kopya; sayfa sayılmaz)</td><td>{duplicates.length}</td><td>—</td></tr>
             <tr><td>Hata / robots ile atlanan</td><td>{s ? `${s.errors} / ${s.blockedByRobots}` : "—"}</td><td>—</td></tr>
           </Table>
           <p className="mt-3 text-xs text-muted">Bilinmeyen (tahmin edilmez): {UNKNOWN_METRICS.join(", ")}.</p>

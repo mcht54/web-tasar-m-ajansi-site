@@ -75,7 +75,7 @@ function priorityOf(s: Signals, actionable: boolean): { priority: Priority; reas
 
 export async function competitorFindings(opts: { competitorId?: string } = {}) {
   const competitors = await db.competitor.findMany({ where: { status: { not: "paused" }, ...(opts.competitorId ? { id: opts.competitorId } : {}) }, select: { id: true, domain: true } });
-  const pages: CPage[] = (await db.competitorPage.findMany({ where: { competitorId: { in: competitors.map((c) => c.id) }, status: 200, removedAt: null } }))
+  const pages: CPage[] = (await db.competitorPage.findMany({ where: { competitorId: { in: competitors.map((c) => c.id) }, status: 200, removedAt: null, duplicateOf: null } }))
     .map((p) => ({ ...p, domain: competitors.find((c) => c.id === p.competitorId)!.domain }));
   const [hasGsc, st, services] = await Promise.all([gscConnected(), loadSiteState(), serviceOpportunities()]);
   const ours = st.pages.filter((p) => p.status === "PUBLISHED");

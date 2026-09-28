@@ -20,6 +20,17 @@ npm run dev                     # http://localhost:3300 — panel: /yonetim
 İlk yöneticinin şifresi `.local/ilk-yonetici.txt` dosyasına yazılır (yalnızca bu makinede). İlk girişte
 **Kullanıcılar** ekranından şifreyi değiştirip dosyayı silin.
 
+> **Şema/migration değişikliğinden sonra dev sunucusunu yeniden başlatın.** `npx prisma migrate deploy`
+> (ve `prisma generate`) sonrası çalışan `npm run dev` süreci bellekteki eski Prisma istemcisini kullanmaya
+> devam eder; kod sıcak yeniden yüklense bile yeni sütunlara/tablolara erişen işler
+> (ör. `auto-apply-proposals`, içerik ve rakip taramaları) "Invalid prisma… invocation" ile başarısız olur.
+> Sunucuyu durdurup `npm run dev` ile yeniden başlatmak yeterlidir.
+>
+> Dev'de ayrı worker yoktur: zamanlayıcı web sürecinin içinden 2 dakikada bir `/api/internal/tick`'i
+> çağırır ve kuyruktaki işler (ör. rakip taraması) bu istekte çalışır. Uzun işlerin web sürecini
+> meşgul etmemesini istiyorsanız `.env`'e `AUTOPILOT_SCHEDULER=off` yazıp ayrı terminalde
+> `npm run worker` çalıştırın (production'daki web / worker / scheduler ayrımıyla aynı).
+
 ## Komutlar
 
 | Komut | Ne yapar |

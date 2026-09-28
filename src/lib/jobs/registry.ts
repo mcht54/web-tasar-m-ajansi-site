@@ -13,6 +13,7 @@ import { sendWeeklyEmail } from "../autopilot/weekly";
 import { sendDailyEmail } from "../autopilot/daily";
 import { runAutoApply } from "../proposals/lifecycle";
 import { runContentScan, type ScanKind } from "../content/scan";
+import { runCompletenessScan } from "../content/completeness";
 import { competitorDiscovery, crawlDueCompetitors, runCompetitorOpportunities } from "../competitors/jobs";
 import { enqueueJob } from "./runner";
 import { refreshPublic } from "../admin/pages";
@@ -108,15 +109,22 @@ registerJob("competitor-crawl", async () => {
   if (!r.length) return { status: "skipped", message: "Tarama zamanı gelen rakip yok" };
   // Değişiklik veya ilk tarama varsa fırsat taraması kuyruğa (bağımlılık: bu iş bitmeden başlamaz)
   if (r.some((x) => x.ok)) await enqueueJob("competitor-opportunity-scan", "rakip taraması");
-  const failed = r.filter((x) => !x.ok);
-  const message = r.map((x) => (x.ok ? `${x.domain}: ${x.pages} sayfa, ${x.changes} değişiklik` : `${x.domain}: HATA — ${x.error}`)).join(" · ");
-  if (failed.length === r.length) throw new Error(message);
+  // Kilitli (başka süreç tarıyor) rakip hata değildir: hiç istek yapılmadan atlanmıştır
+  const failed = r.filter((x) => !x.ok && !x.locked);
+  const message = r.map((x) => (x.ok ? `${x.domain}: ${x.pages} sayfa, ${x.changes} değişiklik` : x.locked ? `${x.domain}: zaten taranıyor (atlandı)` : `${x.domain}: HATA — ${x.error}`)).join(" · ");
+  if (failed.length && failed.length === r.length) throw new Error(message);
   return { message, stats: r };
 });
 registerJob("competitor-opportunity-scan", async () => {
   const s = await runCompetitorOpportunities();
   const created = Object.entries(s.created).map(([k, v]) => `${k} ${v}`).join(", ") || "yeni öneri yok";
   return { status: s.findings ? "ok" : "skipped", message: s.skippedReason ?? `${s.findings} bulgu (${s.actionable} uygulanabilir) · öneriler: ${created}`, stats: s };
+});
+// Eksik alan taraması: her eksik alan mevcut 48 saatlik öneri hattına girer (taslak taslak kalır)
+registerJob("page-completeness-scan", async () => {
+  const s = await runCompletenessScan();
+  const created = Object.entries(s.created).map(([k, v]) => `${k} ${v}`).join(", ") || "yeni öneri yok";
+  return { status: (s.items.length ? "ok" : "skipped") as "ok" | "skipped", message: s.skippedReason ?? `${s.pages} sayfada ${s.gaps} eksik alan · öneriler: ${created}`, stats: s };
 });
 registerJob("alarms", async () => {
   const r = await runAlarms();

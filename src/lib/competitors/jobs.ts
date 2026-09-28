@@ -11,6 +11,8 @@ import { gscConnected } from "../gsc/sync";
 import { createProposal, type CreateResult } from "../proposals/lifecycle";
 import { contentBudget } from "../content/strategy";
 import { crawlCompetitor } from "./crawl";
+import { isCrawling } from "./lock";
+import { enqueueJob } from "../jobs/runner";
 import { competitorFindings, FINDING_LABELS } from "./insights";
 import type { NetPolicy } from "./net";
 
@@ -29,23 +31,46 @@ export async function competitorDiscovery() {
   };
 }
 
-/** Tarama zamanı gelen rakipler sırayla (aynı anda tek rakip) taranır. */
+/**
+ * Panelden tarama isteği: HTTP isteği / tarama YAPMAZ. Rakibi işaretler ve worker işini
+ * kuyruğa ekler (aynı türden bekleyen/çalışan iş varsa yenisi eklenmez). İdempotent: art arda
+ * çağrı tek tarama üretir. Tarama worker'da, rakip kilidiyle çalışır.
+ */
+export async function requestCompetitorCrawl(competitorId: string, by: string): Promise<{ queued: boolean; crawling: boolean }> {
+  const crawling = await isCrawling(competitorId);
+  await db.$executeRaw`UPDATE "Competitor" SET "crawlRequestedAt" = COALESCE("crawlRequestedAt", (now() AT TIME ZONE 'utc')) WHERE id = ${competitorId} AND status <> 'paused'`;
+  await enqueueJob("competitor-crawl", by);
+  return { queued: true, crawling };
+}
+
+/** Taranacak rakipler: panelden istenenler önce, sonra zamanı gelenler (haftalık); başarısız deneme 6 saat bekler. */
+async function nextCompetitor(now: Date, force: boolean, tried: Set<string>) {
+  const weekAgo = new Date(now.getTime() - 6.5 * 86400_000);
+  const backoff = new Date(now.getTime() - 6 * 3600_000);
+  return db.competitor.findFirst({
+    where: {
+      status: { not: "paused" }, id: { notIn: [...tried] },
+      OR: [{ crawlLockUntil: null }, { crawlLockUntil: { lt: now } }],
+      ...(force ? {} : { OR: [{ crawlRequestedAt: { not: null } }, { AND: [{ OR: [{ lastCrawlAt: null }, { lastCrawlAt: { lt: weekAgo } }] }, { OR: [{ crawlStartedAt: null }, { crawlStartedAt: { lt: backoff } }] }] }] }),
+    },
+    orderBy: [{ crawlRequestedAt: { sort: "asc", nulls: "last" } }, { lastCrawlAt: { sort: "asc", nulls: "first" } }],
+  });
+}
+
+/** Yalnızca testler: kuyruk üzerinden yapılan taramanın yerel test sunucusuna ulaşması (üretimde boş). */
+export const crawlHooks: { policy?: NetPolicy; baseFor?: (domain: string) => string | undefined } = {};
+
+/** Worker: rakipleri SIRAYLA (aynı anda tek rakip) ve rakip kilidiyle tarar. */
 export async function crawlDueCompetitors(opts: { policy?: NetPolicy; now?: Date; max?: number; force?: boolean } = {}) {
   const now = opts.now ?? new Date();
-  const due = await db.competitor.findMany({
-    where: { status: { not: "paused" }, ...(opts.force ? {} : { OR: [{ lastCrawlAt: null }, { lastCrawlAt: { lt: new Date(now.getTime() - 6.5 * 86400_000) } }] }) },
-    orderBy: [{ lastCrawlAt: { sort: "asc", nulls: "first" } }], take: opts.max ?? 3,
-  });
-  const out: { domain: string; ok: boolean; pages: number; changes: number; error: string | null }[] = [];
-  for (const c of due) {
-    try {
-      const r = await crawlCompetitor(c.id, { policy: opts.policy, now });
-      out.push({ domain: c.domain, ok: r.ok, pages: r.stats?.pages ?? 0, changes: r.changes.length, error: r.error });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      await db.competitor.update({ where: { id: c.id }, data: { lastCrawlAt: now, lastError: msg, status: "error" } });
-      out.push({ domain: c.domain, ok: false, pages: 0, changes: 0, error: msg });
-    }
+  const out: { domain: string; ok: boolean; locked?: boolean; pages: number; changes: number; error: string | null }[] = [];
+  const tried = new Set<string>();
+  for (let i = 0; i < (opts.max ?? 3); i++) {
+    const c = await nextCompetitor(now, Boolean(opts.force), tried);
+    if (!c) break;
+    tried.add(c.id);
+    const r = await crawlCompetitor(c.id, { policy: opts.policy ?? crawlHooks.policy, baseOverride: crawlHooks.baseFor?.(c.domain), now });
+    out.push({ domain: c.domain, ok: r.ok, locked: r.locked, pages: r.stats?.pages ?? 0, changes: r.changes.length, error: r.error });
   }
   return out;
 }

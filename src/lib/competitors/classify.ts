@@ -68,16 +68,32 @@ export function topicsOf(text: string): string[] {
   return SERVICE_CATALOG.filter((d) => d.patterns.some((p) => f.includes(` ${p}`))).map((d) => d.path);
 }
 
-export function categorize(path: string, title: string, h1: string, places: Places, sectors: string[]): { category: Category; topics: string[]; places: { provinces: string[]; districts: string[] } } {
+// Yayın türü içerik (haber/blog): URL'de şehir adı olsa da lokasyon sayfası değildir
+const ARTICLE_SCHEMA = /^(Article|BlogPosting|NewsArticle|Report|ScholarlyArticle|TechArticle)$/;
+const LOCAL_SCHEMA = /(LocalBusiness|ProfessionalService|Store|Service)$/;
+// Hizmet sinyali (katalog dışı yerel hizmet adları dahil): yer adıyla BİRLİKTE lokasyon sayfasını gösterir
+const SERVICE_WORDS = /(^|-)(web|site|sitesi|tasarim|tasarimi|seo|e-ticaret|eticaret|yazilim|reklam|ajans|ajansi|matbaa|hizmet|hizmetleri|firmasi|dijital|sosyal-medya|google-ads)(-|$)/;
+
+/**
+ * Sayfa türü (ÇIKARIM). Lokasyon için tek sinyal yetmez: yer adı + (hizmet sinyali veya yerel
+ * işletme/hizmet schema'sı) gerekir; Article/BlogPosting/NewsArticle işaretli yayınlar asla
+ * lokasyon sayılmaz.
+ */
+export function categorize(path: string, title: string, h1: string, places: Places, sectors: string[], schemaTypes: string[] = []): { category: Category; topics: string[]; places: { provinces: string[]; districts: string[] } } {
   const p = path.toLowerCase().replace(/\/$/, "") || "/";
   const pl = placesIn(p, places);
   const topics = topicsOf(`${p} ${title} ${h1}`);
+  const isArticle = schemaTypes.some((t) => ARTICLE_SCHEMA.test(t));
+  const hasPlace = pl.provinces.length > 0 || pl.districts.length > 0;
+  const segs = p.split("/").filter(Boolean);
+  const serviceSignal = topics.length > 0 || segs.some((s) => SERVICE_WORDS.test(s));
+  const localSchema = schemaTypes.some((t) => LOCAL_SCHEMA.test(t));
   let category: Category;
   if (p === "/" || /^\/(index\.(html?|php))?$/.test(p)) category = "home";
-  else if (BLOG.test(p)) category = "blog";
+  else if (BLOG.test(p) || isArticle) category = "blog";
   else if (CONTACT.test(p)) category = "contact";
   else if (ABOUT.test(p)) category = "about";
-  else if (pl.provinces.length || pl.districts.length) category = "location";
+  else if (hasPlace && (serviceSignal || localSchema)) category = "location";
   else if (sectors.some((s) => p.includes(s))) category = "sector";
   else if (topics.length) category = "service";
   else category = "other";

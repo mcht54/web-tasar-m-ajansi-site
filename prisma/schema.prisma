@@ -551,7 +551,13 @@ model Competitor {
   // Tarama durumu (yalnızca gözlenen veri)
   status      String               @default("active") // active | paused | error
   source      String               @default("manual") // manual | serp | keyword
-  lastCrawlAt DateTime?
+  lastCrawlAt DateTime? // son BAŞARIYLA TAMAMLANAN taramanın bitişi
+  crawlStartedAt DateTime? // son tarama denemesinin başlangıcı
+  // Tarama kilidi (rakip başına tek tarama): atomik koşullu UPDATE ile alınır; kira süresi
+  // dolan kilit bir sonraki denemede devralınır (süreç çökse de kalıcı kilit olmaz)
+  crawlLockUntil DateTime?
+  crawlLockOwner String?
+  crawlRequestedAt DateTime? // panelden istendi; worker ilk fırsatta tarar
   lastStatus  Int? // ana sayfa HTTP durumu
   lastError   String?
   snapshots   CompetitorSnapshot[] // tarama kayıtları (özet + istatistik)
@@ -583,6 +589,9 @@ model CompetitorPage {
   images        Int        @default(0)
   inSitemap     Boolean    @default(false)
   depth         Int        @default(0)
+  // 200 dönen ama başka bir sayfayla aynı içeriğe sahip (güçlü sinyal: özet + uzunluk + canonical);
+  // kayıt silinmez, canlı sayfa sayımına ve tarama bütçesine girmez
+  duplicateOf   String?
   category      String? // çıkarım: home | service | sector | location | blog | about | contact | other
   topics        String[] // çıkarım: hizmet kataloğu eşleşmeleri
   etag          String?

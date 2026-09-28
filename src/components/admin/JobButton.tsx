@@ -10,6 +10,7 @@ const LABEL: Record<string, string> = {
   "auto-apply-proposals": "Süresi dolan önerileri şimdi işle",
   "content-opportunity-scan": "İçerik yenileme taraması", "service-page-opportunity": "Hizmet sayfası taraması", "local-seo-opportunity": "İlçe (lokal SEO) taraması",
   "competitor-discovery": "Rakip adayı keşfi", "competitor-crawl": "Rakipleri tara", "competitor-opportunity-scan": "Rakip fırsatlarını tara",
+  "page-completeness-scan": "Eksik alan taraması",
 };
 
 /** İşi tetikleyen buton + son çalıştırma durumu. */

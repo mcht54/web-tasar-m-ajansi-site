@@ -5,6 +5,7 @@ import { getSettingsFresh } from "@/lib/settings";
 import { claudeAvailable } from "@/lib/ai/claude";
 import { loadAiKey } from "@/lib/ai/key";
 import { contentBudget } from "@/lib/content/strategy";
+import { findGaps } from "@/lib/content/completeness";
 import { DISTRICT_CRITERIA, SERVICE_DECISION_LABELS, districtPriorities, refreshCandidates, serviceOpportunities } from "@/lib/content/opportunities";
 import { Badge, Card, Notice, PageTitle, Stat, Table, fmtNum } from "@/components/admin/ui";
 import { JobButton } from "@/components/admin/JobButton";
@@ -19,11 +20,12 @@ export default async function ContentPlan() {
   await requireUser("seo");
   await loadAiKey();
   const since = weekAgo();
-  const [settings, refresh, services, districts, indexable, newPages, refreshed] = await Promise.all([
+  const [settings, refresh, services, districts, indexable, newPages, refreshed, gaps] = await Promise.all([
     getSettingsFresh(), refreshCandidates(), serviceOpportunities(), districtPriorities(),
     db.page.count({ where: { status: "PUBLISHED", robotsIndex: true, autoNoindex: false } }),
     db.autopilotAction.count({ where: { type: "NEW_PAGE", createdAt: { gte: since }, status: { in: ["pending_approval", "applying", "applied"] } } }),
     db.autopilotAction.count({ where: { type: "CONTENT", createdAt: { gte: since }, status: { in: ["pending_approval", "applying", "applied"] } } }),
+    findGaps(),
   ]);
   const b = contentBudget({ indexablePages: indexable, weakPages: refresh.length, maxNewPagesPerWeek: settings.autopilot.maxNewPagesPerWeek, maxChangesPerWeek: settings.autopilot.maxChangesPerWeek, createdLast7: { newPages, refresh: refreshed } });
   const ai = claudeAvailable();
@@ -33,7 +35,7 @@ export default async function ContentPlan() {
       <PageTitle
         title="İçerik Planı"
         desc="İçerik otopilotunun ne üreteceği ve neden. Her üretim önce öneridir (48 saat onay), kalite kapısından geçer; ilçe sayfaları yalnızca insan onayıyla yayınlanır. Veri olmayan kriter tahmin edilmez."
-        actions={<div className="flex flex-wrap gap-2"><JobButton kind="content-opportunity-scan" back="/yonetim/icerik-plani" /><JobButton kind="service-page-opportunity" back="/yonetim/icerik-plani" /><JobButton kind="local-seo-opportunity" back="/yonetim/icerik-plani" /></div>}
+        actions={<div className="flex flex-wrap gap-2"><JobButton kind="content-opportunity-scan" back="/yonetim/icerik-plani" /><JobButton kind="service-page-opportunity" back="/yonetim/icerik-plani" /><JobButton kind="local-seo-opportunity" back="/yonetim/icerik-plani" /><JobButton kind="page-completeness-scan" back="/yonetim/icerik-plani" /></div>}
       />
       {!ai && <div className="mb-4"><Notice tone="warn"><b>Yapay zekâ anahtarı bağlı değil.</b> İçerik kural tabanlı üretilmez (uydurma riski); öneriler “Uygulanamaz” olarak görünür. Ayarlar → Entegrasyonlar’dan anahtar ekleyin.</Notice></div>}
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -74,6 +76,13 @@ export default async function ContentPlan() {
               <td className="text-xs">{d.blockers.length ? <span className="text-warn">{d.blockers.join("; ")}</span> : <span className="text-ok">Hazır</span>}</td>
             </tr>
           ))}
+        </Table>
+      </Card>
+
+      <Card title="Eksik alanlar (yayındaki sayfalar + son 30 günün taslakları)" className="mb-6">
+        <p className="mb-3 text-xs text-muted">Her eksik alan 48 saatlik öneri olur; taslak sayfa taslak kalır (bu tarama yayın durumunu asla değiştirmez). Gerçek bilgi yoksa “Ön koşul eksik”, yapay zekâ gerekirse “Uygulanamaz — AI anahtarı gerekli”.</p>
+        <Table head={["Sayfa", "Durum", "Eksik alanlar"]} empty="Eksik alan yok.">
+          {gaps.slice(0, 40).map((g) => <tr key={g.pageId} data-gaps={g.path}><td><Link href={`/yonetim/sayfalar/${g.pageId}`} className="underline">{g.path}</Link></td><td className="text-xs">{g.status === "DRAFT" ? "Taslak" : "Yayında"}</td><td className="text-xs">{g.missing.map((m) => m.field).join(", ")}</td></tr>)}
         </Table>
       </Card>
 

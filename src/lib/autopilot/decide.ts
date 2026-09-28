@@ -13,12 +13,15 @@ import { expectedCtr } from "../seo/priority";
 import { learningStats } from "./learning";
 import { siteUrl } from "../env";
 
-export type ActionType = "TITLE" | "META" | "INTERNAL_LINK" | "BROKEN_LINK" | "CONTENT" | "LOCATION" | "TECH" | "NEW_PAGE";
+export type ActionType = "TITLE" | "META" | "INTERNAL_LINK" | "BROKEN_LINK" | "CONTENT" | "LOCATION" | "TECH" | "NEW_PAGE"
+  | "H1" | "KEYWORD" | "SECONDARY_KEYWORDS" | "EXCERPT" | "OG_IMAGE" | "ALT_TEXT" | "INTRO" | "FAQ";
 export type Risk = "AUTO" | "CONTROLLED" | "HUMAN";
 
 export const ACTION_LABELS: Record<ActionType, string> = {
   TITLE: "Title optimizasyonu", META: "Meta description", INTERNAL_LINK: "İç link", BROKEN_LINK: "Kırık link düzeltme",
   CONTENT: "İçerik geliştirme", LOCATION: "Lokasyon içeriği", TECH: "Teknik SEO", NEW_PAGE: "Yeni sayfa",
+  H1: "Eksik H1", KEYWORD: "Eksik ana kelime", SECONDARY_KEYWORDS: "Eksik ikincil kelimeler", EXCERPT: "Eksik özet",
+  OG_IMAGE: "Eksik OG görseli", ALT_TEXT: "Eksik görsel alt metni", INTRO: "Eksik giriş paragrafı", FAQ: "Eksik SSS",
 };
 export const RISK_LABELS: Record<Risk, string> = { AUTO: "Otomatik", CONTROLLED: "Kontrollü otomatik", HUMAN: "İnsan onayı" };
 
@@ -55,6 +58,14 @@ export const RECOMMENDED_ACTION: Record<ActionType, string> = {
   LOCATION: "Gerçek talep varsa yerel sayfayı yalnızca doğrulanmış yerel bilgiyle hazırla; kalite kapısı + onayla yayınla",
   TECH: "Teknik sorunu incele ve düzelt (indeksleme/canonical/hedef sayfa kararı — insan onayı)",
   NEW_PAGE: "Aynı niyetteki sorguları tek sayfada karşıla: doğrulanmış bilgiyle taslak → kalite kapısı → yayın → sitemap → IndexNow",
+  H1: "Sayfa adını H1 olarak kullan",
+  KEYWORD: "H1'den ana anahtar kelimeyi tanımla",
+  SECONDARY_KEYWORDS: "Search Console'da sayfanın göründüğü sorguları ikincil kelime olarak ekle",
+  EXCERPT: "Sayfanın kendi girişinden kısa özet oluştur",
+  OG_IMAGE: "Sayfadaki alt metinli kayıtlı görseli OG görseli yap",
+  ALT_TEXT: "Alt metni boş görsellere Medya kaydındaki alt metni yaz",
+  INTRO: "Sayfanın kendi bilgisiyle arama niyetine yanıt veren giriş paragrafı yaz (yapay zekâ)",
+  FAQ: "Sayfadaki bilgilerle yanıtlanabilen 2–4 soru ekle (yapay zekâ)",
 };
 
 const LOCAL_PAGE_TYPES = new Set(["CITY", "DISTRICT", "SERVICE_LOCATION", "SECTOR_LOCATION"]);

@@ -88,6 +88,34 @@ export async function aiSection(c: SectionContext, model: string) {
   return sanitizeDeep(out);
 }
 
+export const introSchema = z.object({ intro: z.string().describe("2-3 cümlelik giriş paragrafı, 30-80 kelime; yalnızca sayfadaki bilgilerle") });
+export const faqSchema = z.object({ faq: z.array(z.object({ q: z.string(), a: z.string() })).describe("2-4 gerçek kullanıcı sorusu; yanıtlar yalnızca sayfadaki bilgilerle, genel ve dürüst") });
+
+export type FieldContext = { path: string; h1: string; query: string | null; intent: string; existingFaq: string[]; text: string };
+
+/** Eksik giriş paragrafı: sayfanın kendi metninden, yeni olgu eklemeden. */
+export async function aiIntro(c: FieldContext, model: string) {
+  const out = await parse(introSchema, [
+    "Bu sayfa için eksik olan GİRİŞ PARAGRAFINI yaz: sayfanın ne sunduğunu ve kime yönelik olduğunu 2-3 cümlede anlat.",
+    "- Yalnızca aşağıdaki sayfa metnindeki bilgileri kullan; müşteri, rakam, fiyat, süre, adres, referans UYDURMA. HTML kullanma.",
+    `Arama niyeti: ${c.intent}`, `URL: ${c.path}`, `H1: ${c.h1}`, `Odak kelime: ${c.query ?? "(yok)"}`,
+    `Sayfa metni:\n${c.text.slice(0, 8000) || "(boş)"}`,
+  ].join("\n"), model, 4000);
+  return sanitizeDeep(out);
+}
+
+/** Eksik SSS: sayfadaki bilgilerle yanıtlanabilen gerçek sorular. */
+export async function aiFaq(c: FieldContext, model: string) {
+  const out = await parse(faqSchema, [
+    "Bu sayfaya, sayfadaki bilgilerle yanıtlanabilen 2-4 SIK SORULAN SORU ekle.",
+    "- Yanıtlar yalnızca sayfa metnindeki bilgilere dayansın; bilinmeyen konuda soru yazma. Rakam, fiyat, müşteri, süre garantisi UYDURMA. HTML kullanma.",
+    `Mevcut sorular (tekrar etme):\n${c.existingFaq.join("\n") || "(yok)"}`,
+    `Arama niyeti: ${c.intent}`, `URL: ${c.path}`, `H1: ${c.h1}`, `Odak kelime: ${c.query ?? "(yok)"}`,
+    `Sayfa metni:\n${c.text.slice(0, 8000) || "(boş)"}`,
+  ].join("\n"), model, 6000);
+  return sanitizeDeep(out);
+}
+
 export const pageSchema = z.object({
   seoTitle: z.string().describe("30-60 karakter"),
   metaDescription: z.string().describe("110-160 karakter"),

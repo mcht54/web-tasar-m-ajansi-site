@@ -29,7 +29,7 @@ import { siteUrl } from "../env";
 import { extractMarkdown } from "../text/markdown";
 import { wordCount } from "../text/analyze";
 import { unsafeMarkup } from "../content/sanitize";
-import { AUTO_APPLY_TYPES, FORBIDDEN_FIELDS, autoApplyBlocker, expiryFor, fingerprintOf, hasChanges, riskLevelFor, type Category } from "./policy";
+import { AUTO_APPLY_TYPES, FORBIDDEN_FIELDS, STATUS_CHANGE_TYPES, autoApplyBlocker, expiryFor, fingerprintOf, hasChanges, riskLevelFor, type Category } from "./policy";
 
 /** Test edilebilir saat: testler `clock.now`'u değiştirerek 48 saati simüle eder. */
 export const clock = { now: () => new Date() };
@@ -81,6 +81,9 @@ export async function duplicateReason(key: string, now = clock.now()): Promise<{
   if (rejected) return { id: rejected.id, note: "Aynı öneri son 30 gün içinde reddedildi" };
   const applied = rows.find((r) => r.status === "applied" && r.appliedAt && r.appliedAt.getTime() > now.getTime() - 14 * 86400_000);
   if (applied) return { id: applied.id, note: "Aynı öneri son 14 gün içinde uygulandı" };
+  // Uygulanabilir değişiklik üretmeyen (atlanan) öneri her taramada yeniden denenmez
+  const skipped = rows.find((r) => r.status === "skipped" && r.createdAt.getTime() > now.getTime() - 7 * 86400_000);
+  if (skipped) return { id: skipped.id, note: "Aynı öneri son 7 günde uygulanabilir bir değişiklik üretmedi" };
   const failed = rows.filter((r) => r.status === "failed" && r.createdAt.getTime() > now.getTime() - 14 * 86400_000);
   if (failed.length >= 2) return { id: failed[0].id, note: "Aynı öneri 14 gün içinde 2 kez başarısız oldu (soğuma)" };
   return null;
@@ -131,11 +134,11 @@ async function finalizePrepared(id: string, p: NewProposal, r: ExecOutcome, wind
 
 // ─── Uygulama hattı ──────────────────────────────────────────────────────────
 
-type PageQuality = { score: number; schemaErrors: number; noindex: boolean; similar: number; similarPath: string | null; stuffing: string; length: string };
+type PageQuality = { score: number; schemaErrors: number; noindex: boolean; similar: number; similarPath: string | null; stuffing: string; length: string; words: number };
 
 function qualityOf(an: NonNullable<Awaited<ReturnType<typeof analyzeUnsaved>>>, noindex: boolean): PageQuality {
   const check = (id: string) => an.seo.checks.find((c) => c.id === id)?.status ?? "NA";
-  return { score: an.seo.score, schemaErrors: an.schemaIssues.filter((i) => i.level === "error").length, noindex, similar: an.similar.score, similarPath: an.similar.path, stuffing: check("stuffing"), length: check("length") };
+  return { score: an.seo.score, schemaErrors: an.schemaIssues.filter((i) => i.level === "error").length, noindex, similar: an.similar.score, similarPath: an.similar.path, stuffing: check("stuffing"), length: check("length"), words: an.seo.wordCount };
 }
 
 class PipelineError extends Error {
@@ -206,6 +209,9 @@ export async function applyProposal(id: string, opts: { via: Via; user?: Session
     const all = changes.pages.flatMap((p) => p.changes);
     const forbidden = all.find((c) => FORBIDDEN_FIELDS.has(c.field));
     if (forbidden) throw new PipelineError(`“${forbidden.field}” alanı bu hattan değiştirilemez; sayfa editöründen yapılır`, false);
+    // Taslak güvenliği: yayın durumunu yalnızca yeni sayfa önerisi (taslak → yayın) değiştirebilir;
+    // diğer hiçbir öneri (eksik alan, içerik, rakip…) elle onayla bile sayfayı yayına alamaz
+    if (!STATUS_CHANGE_TYPES.has(a.type) && all.some((c) => c.field === "status")) throw new PipelineError("Bu öneri türü sayfanın yayın durumunu değiştiremez", false);
     for (const c of all) {
       const t = typeof c.after === "string" ? c.after : JSON.stringify(c.after ?? "");
       if (UNVERIFIED_RE.test(t)) throw new PipelineError(`“${c.field}” doğrulanmamış bilgi ([DOĞRULANMALI]) içeriyor`, false);
@@ -301,7 +307,8 @@ export async function applyProposal(id: string, opts: { via: Via; user?: Session
         q.score < p0.score - 10 && `SEO skoru ${p0.score} → ${q.score} düştü`,
         pg.status === "PUBLISHED" && q.noindex && !p0.noindex && "otomatik NOINDEX'e düştü",
         q.similar >= threshold && p0.similar < threshold && `kopya içerik: ${q.similarPath} ile %${Math.round(q.similar * 100)} benzer`,
-        q.stuffing === "FAIL" && p0.stuffing !== "FAIL" && "keyword stuffing (ana kelime yoğunluğu %3,5'in üzerinde)",
+        // Yoğunluk yalnızca yeterli uzunlukta anlamlı (5 kelimelik sayfada 4 kelimelik ifade her zaman "yoğun" görünür)
+        q.stuffing === "FAIL" && p0.stuffing !== "FAIL" && q.words >= 150 && "keyword stuffing (ana kelime yoğunluğu %3,5'in üzerinde)",
         q.length === "FAIL" && p0.length !== "FAIL" && "thin content",
       ].filter(Boolean);
       if (problems.length) throw new PipelineError(`SEO doğrulama: ${set.path} — ${problems.join("; ")}`, false);

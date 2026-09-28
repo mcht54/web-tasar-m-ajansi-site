@@ -7,22 +7,26 @@ import type { CrawlStats } from "@/lib/competitors/crawl";
 import { Badge, Card, Notice, PageTitle, fmtDate, fmtNum, inputCls } from "@/components/admin/ui";
 import { JobButton } from "@/components/admin/JobButton";
 import { addCompetitorAction } from "./actions";
+import { SubmitButton } from "@/components/admin/SubmitButton";
 
 export const metadata = { title: "Rakip Analizi" };
 
 const PRIO_TONE = { URGENT: "bad", HIGH: "warn", MEDIUM: "info", LOW: "muted" } as const;
 
+const currentTime = () => new Date();
+
 export default async function Competitors(props: PageProps<"/yonetim/rakipler">) {
   await requireUser("seo");
   const sp = await props.searchParams;
   const [competitors, discovery, { findings, hasGsc }, proposals] = await Promise.all([
-    db.competitor.findMany({ orderBy: { createdAt: "desc" }, include: { snapshots: { orderBy: { createdAt: "desc" }, take: 1 }, _count: { select: { changes: true } } } }),
+    db.competitor.findMany({ orderBy: { createdAt: "desc" }, include: { snapshots: { where: { status: { not: "running" } }, orderBy: { createdAt: "desc" }, take: 1 }, _count: { select: { changes: true } } } }),
     competitorDiscovery(),
     competitorFindings(),
     db.autopilotAction.groupBy({ by: ["status"], where: { source: "competitor" }, _count: true }),
   ]);
   const byComp = (domain: string) => findings.filter((f) => f.competitors.includes(domain));
   const pending = proposals.find((p) => p.status === "pending_approval")?._count ?? 0;
+  const now = currentTime();
   return (
     <>
       <PageTitle
@@ -49,7 +53,7 @@ export default async function Competitors(props: PageProps<"/yonetim/rakipler">)
             <form action={addCompetitorAction} className="space-y-2">
               <input name="domain" required placeholder="rakip.com" className={inputCls} />
               <input name="name" placeholder="Görünen ad (isteğe bağlı)" className={inputCls} />
-              <button className="rounded-full bg-ink px-4 py-2 text-paper">Ekle ve tara</button>
+              <SubmitButton pending="Tarama kuyruğa alınıyor…" className="rounded-full bg-ink px-4 py-2 text-paper">Ekle ve tara</SubmitButton>
               <p className="text-xs text-muted">Yalnızca herkese açık alan adı; IP adresi, yerel/iç ağ adresleri reddedilir. Tarama robots.txt&apos;ye uyar, istekler arasında bekler.</p>
             </form>
           </Card>
@@ -75,6 +79,7 @@ export default async function Competitors(props: PageProps<"/yonetim/rakipler">)
                     </div>
                     <div className="text-right text-xs text-muted">Son tarama: {c.lastCrawlAt ? fmtDate(c.lastCrawlAt, true) : "henüz yok"}{c.lastStatus ? ` · HTTP ${c.lastStatus}` : ""}</div>
                   </div>
+                  {c.crawlLockUntil && c.crawlLockUntil > now ? <p className="mt-2 text-xs text-warn" data-crawl-state="running">Bu rakip şu anda taranıyor.</p> : c.crawlRequestedAt ? <p className="mt-2 text-xs text-muted" data-crawl-state="queued">Tarama kuyruğa alındı.</p> : null}
                   {c.lastError && <p className="mt-2 text-xs text-bad">{c.lastError}</p>}
                   {s ? (
                     <dl className="mt-3 grid grid-cols-2 gap-3 text-[13px] sm:grid-cols-4 lg:grid-cols-7">

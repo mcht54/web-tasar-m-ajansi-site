@@ -79,7 +79,7 @@ function guardedLookup(policy: NetPolicy) {
   };
 }
 
-export type SafeResponse = { status: number; headers: Record<string, string>; body: string; finalUrl: string; chain: { url: string; status: number }[]; truncated: boolean; ms: number };
+export type SafeResponse = { status: number; headers: Record<string, string>; body: string; finalUrl: string; chain: { url: string; status: number }[]; truncated: boolean; ms: number; stoppedAt?: string };
 
 export async function checkUrl(raw: string, policy: NetPolicy): Promise<URL> {
   let u: URL;
@@ -136,12 +136,14 @@ function once(url: URL, o: { method: string; headers: Record<string, string>; ti
 }
 
 /** SSRF korumalı GET/HEAD; yönlendirmeleri elle ve denetleyerek izler. */
-export async function safeFetch(raw: string, opts: { policy?: NetPolicy; timeoutMs?: number; maxBytes?: number; method?: "GET" | "HEAD"; headers?: Record<string, string> } = {}): Promise<SafeResponse> {
+export async function safeFetch(raw: string, opts: { policy?: NetPolicy; timeoutMs?: number; maxBytes?: number; method?: "GET" | "HEAD"; headers?: Record<string, string>; followIf?: (next: URL) => boolean } = {}): Promise<SafeResponse> {
   const policy = opts.policy ?? {};
   const t0 = Date.now();
   const chain: { url: string; status: number }[] = [];
   let url = await checkUrl(raw, policy);
+  const visited = new Set<string>();
   for (let hop = 0; hop < 6; hop++) {
+    visited.add(url.toString());
     const r = await once(url, {
       method: opts.method ?? "GET", timeoutMs: opts.timeoutMs ?? 10_000, maxBytes: opts.maxBytes ?? 2_000_000, policy,
       headers: { "user-agent": CRAWLER_UA, accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.5", "accept-encoding": "gzip, deflate, br", ...(opts.headers ?? {}) },
@@ -149,7 +151,14 @@ export async function safeFetch(raw: string, opts: { policy?: NetPolicy; timeout
     const loc = r.headers.location;
     if (r.status >= 300 && r.status < 400 && r.status !== 304 && loc) {
       chain.push({ url: url.toString(), status: r.status });
-      url = await checkUrl(new URL(loc, url).toString(), policy);
+      const next = new URL(loc, url);
+      next.hash = "";
+      if (visited.has(next.toString())) throw Object.assign(new Error(`Yönlendirme döngüsü: ${url.pathname} → ${next.pathname}`), { chain, loop: true });
+      // İzin verilmeyen hedefe (ör. başka site) gidilmez: istek atılmadan yönlendirme olarak döner
+      if (opts.followIf && !opts.followIf(next)) {
+        return { status: r.status, headers: r.headers, body: "", finalUrl: next.toString(), chain, truncated: false, ms: Date.now() - t0, stoppedAt: next.toString() };
+      }
+      url = await checkUrl(next.toString(), policy);
       continue;
     }
     return { status: r.status, headers: r.headers, body: r.body.toString("utf8"), finalUrl: url.toString(), chain, truncated: r.truncated, ms: Date.now() - t0 };

@@ -85,9 +85,14 @@ function show(v: unknown): string | null {
   return s.length > 4000 ? `${s.slice(0, 4000)}…` : s;
 }
 
-/** Anahtar sırasından bağımsız karşılaştırma (JSONB anahtarları sıralı saklar). */
+/**
+ * Anahtar sırasından bağımsız karşılaştırma (JSONB anahtarları sıralı saklar). Anlamca aynı
+ * boş değerler (null, [], "") eşit sayılır: ör. boş SSS'nin null → [] dönüşümü sahte sürüm ve
+ * alan logu üretmez. Dolu değerler birebir karşılaştırılır (gerçek değişiklik kaçmaz).
+ */
 function stable(v: unknown): string {
-  return JSON.stringify(v ?? null, (_k, val) =>
+  const empty = v == null || v === "" || (Array.isArray(v) && v.length === 0);
+  return JSON.stringify(empty ? null : v, (_k, val) =>
     val && typeof val === "object" && !Array.isArray(val) ? Object.fromEntries(Object.entries(val).sort(([a], [b]) => a.localeCompare(b))) : val,
   );
 }

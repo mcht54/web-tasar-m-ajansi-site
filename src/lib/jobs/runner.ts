@@ -2,7 +2,7 @@ import "server-only";
 import { db } from "../db";
 import { runFullAnalysis } from "../seo/analyzer";
 
-export const JOB_KINDS = ["analyze", "opportunities", "crawl", "gsc-sync", "rank-update", "index-inspect", "indexnow", "sitemap-check", "daily", "autopilot", "alarms", "weekly-email", "daily-email", "auto-apply-proposals", "content-opportunity-scan", "service-page-opportunity", "local-seo-opportunity", "competitor-discovery", "competitor-crawl", "competitor-opportunity-scan"] as const;
+export const JOB_KINDS = ["analyze", "opportunities", "crawl", "gsc-sync", "rank-update", "index-inspect", "indexnow", "sitemap-check", "daily", "autopilot", "alarms", "weekly-email", "daily-email", "auto-apply-proposals", "content-opportunity-scan", "service-page-opportunity", "local-seo-opportunity", "competitor-discovery", "competitor-crawl", "competitor-opportunity-scan", "page-completeness-scan"] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
 export type JobResult = { id: string; kind: JobKind; status: "ok" | "error" | "skipped"; message: string; stats?: unknown };
@@ -92,6 +92,7 @@ export const DEPENDS_ON: Partial<Record<JobKind, JobKind[]>> = {
   "content-opportunity-scan": ["daily", "autopilot"], "service-page-opportunity": ["daily", "autopilot", "content-opportunity-scan"], "local-seo-opportunity": ["daily", "autopilot", "content-opportunity-scan", "service-page-opportunity"],
   // Rakip taraması kendi site işlerini engellemez: gece hattı/otopilot bitmeden başlamaz
   "competitor-crawl": ["daily", "autopilot"],
+  "page-completeness-scan": ["daily", "autopilot", "content-opportunity-scan", "service-page-opportunity", "local-seo-opportunity", "competitor-opportunity-scan"],
   "competitor-opportunity-scan": ["competitor-crawl", "daily", "autopilot", "content-opportunity-scan", "service-page-opportunity"],
 };
 

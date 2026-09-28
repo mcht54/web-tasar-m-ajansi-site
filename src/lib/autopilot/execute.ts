@@ -15,7 +15,8 @@ import { wordCount } from "../text/analyze";
 import { containsPhrase, trLower, trUpperFirst } from "../text/slug";
 import { claudeAvailable, aiErrorMessage } from "../ai/claude";
 import { getSettingsFresh } from "../settings";
-import { PROMPT_VERSION, aiPage, aiSection, aiSnippets } from "./ai";
+import { PROMPT_VERSION, aiFaq, aiIntro, aiPage, aiSection, aiSnippets } from "./ai";
+import { FIELD_EXECUTORS } from "./field-exec";
 import { classifyIntent } from "./intent";
 import { angleFor } from "../content/strategy";
 import { sanitizeAiText, unsafeMarkup } from "../content/sanitize";
@@ -47,7 +48,7 @@ export type ExecOutcome = {
 type PrepAction = Action & { prepareOnly?: boolean };
 
 /** AI çağrısı test ve geliştirme ortamında taklit edilebilir. */
-export const aiHooks = { snippets: aiSnippets, section: aiSection, page: aiPage, available: claudeAvailable };
+export const aiHooks = { snippets: aiSnippets, section: aiSection, page: aiPage, intro: aiIntro, faq: aiFaq, available: claudeAvailable };
 
 async function pageInput(pageId: string) {
   const page = await db.page.findUniqueOrThrow({ where: { id: pageId } });
@@ -66,6 +67,11 @@ async function manualEditBlock(pageId: string, field: keyof PageInput): Promise<
     orderBy: { createdAt: "desc" },
   });
   return human ? `“${label}” alanı ${human.createdAt.toLocaleDateString("tr-TR")} tarihinde ${human.userName ?? "bir editör"} tarafından elle düzenlenmiş; son ${MANUAL_EDIT_GUARD_DAYS} gün içinde otomatik değişiklik yapılmaz. Öneri onay bekliyor.` : null;
+}
+
+/** Tek alan değişikliği (hazırlık modunda yalnızca değişiklik listesi; aksi hâlde savePage). */
+export function commitField(a: Action, pageId: string, field: keyof PageInput, value: unknown, note: string, opts: { approved?: boolean } = {}) {
+  return commit(a, pageId, field, value, note, opts);
 }
 
 async function commit(a: PrepAction, pageId: string, field: keyof PageInput, value: unknown, note: string, opts: { approved?: boolean } = {}): Promise<ExecOutcome> {
@@ -345,7 +351,11 @@ export async function prepareAction(actionId: string, opts: { model: string }): 
       case "BROKEN_LINK": return await execBroken(a);
       case "CONTENT": return await execContent(a, opts.model, true);
       case "NEW_PAGE": return await execNewPage(a, { model: opts.model, prepareOnly: true });
-      default: return { status: "needs_approval", note: "Bu tür (teknik/lokasyon/cannibalization kararı) otomatik uygulanmaz; ilgili ekrandan elle yapılır." };
+      default: {
+        const fx = FIELD_EXECUTORS[a.type];
+        if (fx) return await fx(a, opts.model);
+        return { status: "needs_approval", note: "Bu tür (teknik/lokasyon/cannibalization kararı) otomatik uygulanmaz; ilgili ekrandan elle yapılır." };
+      }
     }
   } catch (e) {
     return { status: "failed", note: e instanceof Error ? e.message : String(e) };

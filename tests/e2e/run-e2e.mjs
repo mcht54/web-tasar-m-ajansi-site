@@ -512,14 +512,28 @@ await step("Rakipler: alan adı doğrulama + SSRF reddi; tarama hatası dürüst
     await page.goto("/yonetim/rakipler");
     assert.match(await page.locator("[data-gsc]").innerText(), /Bağlı değil/);
     assert.match(await page.locator("[data-discovery]").innerText(), /SERP/);
-    await page.fill('input[name="domain"]', `https://www.rakip-e2e-${stamp}.example/hizmet`);
-    await Promise.all([page.waitForURL(/\/yonetim\/rakipler\/\w+\?basladi=1/), page.click('button:has-text("Ekle ve tara")')]);
+    await c.query(`delete from "JobRun" where kind='competitor-crawl' and status in ('queued','running')`);
+    const domain = `rakip-e2e-${stamp}.example`;
+    await page.fill('input[name="domain"]', `https://www.${domain}/hizmet`);
+    await Promise.all([page.waitForURL(/\/yonetim\/rakipler\/\w+\?kuyruk=1/), page.click('button:has-text("Ekle ve tara")')]);
     const id = new URL(page.url()).pathname.split("/").pop();
-    assert.equal((await c.query('select domain from "Competitor" where id=$1', [id])).rows[0].domain, `rakip-e2e-${stamp}.example`);
-    // .example çözümlenmez: tarama hata olarak kaydedilmeli (sahte başarı yok)
-    let err = null;
-    for (let i = 0; i < 20 && !err; i++) { await new Promise((r) => setTimeout(r, 500)); err = (await c.query('select "lastError" from "Competitor" where id=$1', [id])).rows[0].lastError; }
-    assert.ok(err, "tarama hatası kaydedilmedi");
+    assert.equal((await c.query('select domain from "Competitor" where id=$1', [id])).rows[0].domain, domain);
+    // Eylem taramayı web isteğinde YAPMAZ: yalnızca kuyruğa alır (E2E sunucusunda zamanlayıcı kapalı → kuyrukta bekler)
+    assert.match(await page.locator('[data-crawl-state="queued"]').innerText(), /Tarama kuyruğa alındı/);
+    // Aynı formu 4 kez daha gönder (gerçek olaydaki 5 "ekle"): tek rakip, tek ekleme kaydı, tek kuyruk işi
+    for (let i = 0; i < 4; i++) {
+      await page.goto("/yonetim/rakipler");
+      await page.fill('input[name="domain"]', domain);
+      await Promise.all([page.waitForURL(/\/yonetim\/rakipler\/\w+\?/), page.click('button:has-text("Ekle ve tara")')]);
+    }
+    // "Şimdi tara" iki kez
+    for (let i = 0; i < 2; i++) await Promise.all([page.waitForURL(/kuyruk=1|taraniyor=1/), page.click('button:has-text("Şimdi tara")')]);
+    assert.equal(Number((await c.query('select count(*) from "Competitor" where domain=$1', [domain])).rows[0].count), 1, "mükerrer rakip");
+    assert.equal(Number((await c.query(`select count(*) from "AuditLog" where action='competitor.add' and "entityId"=$1`, [id])).rows[0].count), 1, "ekleme kaydı tekrarlandı");
+    assert.equal(Number((await c.query(`select count(*) from "JobRun" where kind='competitor-crawl' and status in ('queued','running')`)).rows[0].count), 1, "birden fazla tarama işi");
+    assert.equal(Number((await c.query('select count(*) from "CompetitorSnapshot" where "competitorId"=$1', [id])).rows[0].count), 0, "web isteği tarama yaptı");
+    await c.query(`delete from "JobRun" where kind='competitor-crawl' and status='queued'`);
+    await c.query(`update "Competitor" set "crawlRequestedAt"=null where id=$1`, [id]);
     // Gözlenmiş rakip sayfaları (TEST veritabanı) → fırsat ve sekmeler
     const ins = (path, cat, topics, h2, words) => c.query(`insert into "CompetitorPage" (id, "competitorId", url, path, status, title, h1, h2, "wordCount", "schemaTypes", links, category, topics) values ($1,$2,$3,$4,200,$5,$6,$7,$8,$9,'{}',$10,$11)`,
       [`${id}${path.replace(/\W/g, "")}`, id, `https://rakip-e2e-${stamp}.example${path}`, path, `${path} başlık`, [`${path} h1`], h2, words, ["Service", "LocalBusiness"], cat, topics]);

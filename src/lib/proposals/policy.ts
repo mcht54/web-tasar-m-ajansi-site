@@ -28,11 +28,22 @@ export const EXPECTED_IMPACT: Record<string, string> = {
   CONTENT: "Sayfa arama niyetini daha kapsamlı karşılar; ilgili sorgularda görünürlük hedeflenir.",
   NEW_PAGE: "Karşılanmayan gerçek arama talebi için yeni sayfa; mevcut sayfalarla yarışmaz.",
   LOCATION: "Gerçek yerel talep için sayfa kararı (insan onayı).",
+  H1: "Sayfanın tek ve açık bir ana başlığı olur.",
+  KEYWORD: "Sayfanın hedef kelimesi tanımlanır: analiz, iç link ve sıralama takibi bu kelimeyle çalışır.",
+  SECONDARY_KEYWORDS: "Sayfanın gerçekte göründüğü sorgular ikincil kelime olarak izlenir.",
+  EXCERPT: "Liste ve paylaşımlarda sayfanın kendi girişinden kısa özet görünür.",
+  OG_IMAGE: "Sosyal paylaşımlarda sayfanın kendi görseli kullanılır.",
+  ALT_TEXT: "Görseller erişilebilir olur ve görsel aramada anlaşılır.",
+  INTRO: "Sayfanın ilk paragrafı arama niyetine doğrudan yanıt verir.",
+  FAQ: "Sık sorulan sorular sayfadaki bilgilerle yanıtlanır; 2+ soru FAQPage verisini açar.",
   TECH: "Teknik/indeksleme kararı (insan onayı).",
 };
 
 /** Süre dolunca otomatik uygulanabilecek türler (yalnızca LOW/MEDIUM risk ile). */
-export const AUTO_APPLY_TYPES = new Set(["TITLE", "META", "INTERNAL_LINK", "BROKEN_LINK", "CONTENT", "NEW_PAGE"]);
+export const AUTO_APPLY_TYPES = new Set(["TITLE", "META", "INTERNAL_LINK", "BROKEN_LINK", "CONTENT", "NEW_PAGE", "H1", "KEYWORD", "SECONDARY_KEYWORDS", "EXCERPT", "OG_IMAGE", "ALT_TEXT", "INTRO", "FAQ"]);
+
+/** Yayın durumunu (status) değiştirebilen TEK tür: yeni sayfanın taslak → yayın geçişi. */
+export const STATUS_CHANGE_TYPES = new Set(["NEW_PAGE"]);
 
 /**
  * Otomatik uygulamada ASLA değiştirilmeyen alanlar: URL yapısı, indeksleme, canonical.
