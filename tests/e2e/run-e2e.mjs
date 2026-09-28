@@ -147,11 +147,26 @@ await step("AI asistanı (kural tabanlı): öneri onaylanınca sayfaya uygulanı
   await page.selectOption('select[name="pageId"]', opt);
   await page.click('button:has-text("Üret")');
   await page.waitForSelector("text=Onay bekliyor");
-  const title = (await page.locator("div.rounded-xl p.font-semibold").first().textContent()).replace(/\s*\(\d+\)$/, "").trim();
-  await page.click('button:has-text("Bu seçeneği sayfaya uygula") >> nth=0');
+  await page.waitForSelector('button:has-text("Bu seçeneği sayfaya uygula")');
+  const suggestionUrl = page.url();
+  const currentTitle = () => html("/seo-hizmeti").then((r) => r.text()).then((t) => (/<title>(.*?)<\/title>/.exec(t) ?? [])[1].replace(/&amp;/g, "&"));
+  const titles = (await page.locator("div.rounded-xl p.font-semibold").allTextContents()).map((t) => t.replace(/\s*\(\d+\)$/, "").trim());
+  const before = await currentTitle();
+  // Mevcutla aynı seçenek: "uygulandı" DENMEZ, hata gösterilir, sayfa değişmez
+  const same = titles.indexOf(before);
+  if (same >= 0) {
+    await page.click(`button:has-text("Bu seçeneği sayfaya uygula") >> nth=${same}`);
+    await page.waitForSelector("text=Değişiklik oluşmadı");
+    assert.equal(await page.locator("text=ve sayfaya uygulandı").count(), 0, "değişiklik yokken başarı gösterildi");
+    assert.equal(await currentTitle(), before);
+    await page.goto(suggestionUrl);
+  }
+  // Farklı seçenek: gerçekten uygulanır ve sitede görünür
+  const diff = titles.findIndex((t) => t !== before);
+  assert.ok(diff >= 0, "farklı seçenek yok");
+  await page.click(`button:has-text("Bu seçeneği sayfaya uygula") >> nth=${diff}`);
   await page.waitForSelector("text=ve sayfaya uygulandı");
-  const pub = await (await html("/seo-hizmeti")).text();
-  assert.ok(pub.includes(`<title>${title.replace(/&/g, "&amp;")}</title>`), `title uygulanmadı: ${title}`);
+  assert.equal(await currentTitle(), titles[diff], `title uygulanmadı: ${titles[diff]}`);
 });
 
 await step("Medya: yükleme WebP/AVIF varyantları üretir", async () => {
@@ -361,18 +376,196 @@ await step("Otopilot: denetim → fırsat → kalite kapısı → uygula → sit
   assert.equal(await page.locator("[data-health]").count(), 10);
   assert.match(await page.locator('[data-health="google"] summary').innerText(), /NOT VERIFIABLE/);
   assert.equal(await page.locator("ol li").filter({ hasText: "tamam" }).count() + await page.locator("ol li").filter({ hasText: "atlandı" }).count(), 23);
-  // Uygulanmış bir iç link işlemi: kaynak sayfada link sitede görünmeli
-  const row = page.locator("tr", { has: page.locator('button:text-is("Geri al")') }).filter({ hasText: "iç link" }).first();
-  assert.ok(await row.count(), "uygulanan iç link işlemi yok");
-  const title = await row.locator("td").nth(1).locator("div").first().innerText();
-  const [, src, target] = /^(\/\S*) → (\/\S*) iç link/.exec(title) ?? [];
-  assert.ok(src && target, `başlık ayrıştırılamadı: ${title}`);
-  const before = await (await html(src)).text();
-  assert.ok(before.includes(`href="${target}"`), `${src} sayfasında ${target} linki görünmüyor`);
-  await Promise.all([page.waitForURL(/ok=/), row.locator('button:text-is("Geri al")').click()]);
-  await page.waitForSelector("text=Geri alındı");
-  const related = (/İlgili sayfalar([\s\S]*?)<\/section>|İlgili sayfalar([\s\S]*?)<\/ul>/.exec(await (await html(src)).text()) ?? [""])[0];
-  assert.ok(!related.includes(`href="${target}"`), "geri alma sonrası link hâlâ 'İlgili sayfalar' bölümünde");
+  // 48 saatlik onay: döngü iç link önerisini hazırlar ama hemen uygulamaz
+  await page.goto("/yonetim/oneriler");
+  assert.ok(await page.locator("article[data-status=pending_approval]", { hasText: "iç link" }).count() >= 2, "onay bekleyen iç link önerisi yok");
+  assert.ok(await page.locator("[data-countdown]").count() > 0, "geri sayım yok");
+  assert.match(await page.locator("[data-timer]").first().innerText(), /onaylanmazsa otomatik uygulanacak/);
+});
+
+const related = async (src) => (/İlgili sayfalar([\s\S]*?)<\/section>|İlgili sayfalar([\s\S]*?)<\/ul>/.exec(await (await html(src)).text()) ?? [""])[0];
+const linkOf = async (card) => {
+  const [, src, target] = /(\/\S*) → (\/\S*) iç link/.exec(await card.locator("h2").innerText()) ?? [];
+  assert.ok(src && target, "öneri başlığı ayrıştırılamadı");
+  return { id: await card.getAttribute("data-proposal"), src, target };
+};
+
+await step("Öneri → Şimdi Uygula → DB + sürüm + denetim logu + sitede + UI durumu → Rollback", async () => {
+  const { default: pg } = await import("pg");
+  const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await c.connect();
+  try {
+    await page.goto("/yonetim/oneriler");
+    const card = page.locator("article[data-status=pending_approval]", { hasText: "iç link" }).first();
+    const { id, src, target } = await linkOf(card);
+    assert.ok(!(await related(src)).includes(`href="${target}"`), "uygulamadan önce link zaten var");
+    const versions = Number((await c.query('select count(*) from "PageVersion" v join "Page" p on p.id=v."pageId" where p.path=$1', [src])).rows[0].count);
+    await Promise.all([page.waitForURL(/ok=/), card.locator('button:text-is("Şimdi Uygula")').click()]);
+    await page.waitForSelector("text=sürüm geçmişine ve denetim loguna yazıldı");
+    // DB: gerçek değişiklik, sürüm, denetim logu, durum
+    const row = (await c.query('select status, "appliedVia", "appliedAt", "rollbackAvailable" from "AutopilotAction" where id=$1', [id])).rows[0];
+    assert.equal(row.status, "applied");
+    assert.equal(row.appliedVia, "manual");
+    assert.ok(row.appliedAt && row.rollbackAvailable);
+    const links = (await c.query('select "relatedLinks" from "Page" where path=$1', [src])).rows[0].relatedLinks;
+    assert.ok(links.some((l) => l.path === target), "DB'de link yok");
+    assert.ok(Number((await c.query('select count(*) from "PageVersion" v join "Page" p on p.id=v."pageId" where p.path=$1', [src])).rows[0].count) > versions, "sürüm oluşmadı");
+    assert.equal(Number((await c.query(`select count(*) from "AuditLog" where "entityId"=$1 and action='proposal.apply'`, [id])).rows[0].count), 1, "denetim logu yok");
+    // Sitede
+    assert.ok((await related(src)).includes(`href="${target}"`), `${src} sayfasında ${target} linki görünmüyor`);
+    // UI durumu + uygulama hattı adımları
+    await page.goto(`/yonetim/oneriler/${id}`);
+    assert.match(await page.locator("main").innerText(), /Uygulandı/);
+    assert.match(await page.locator("[data-steps]").innerText(), /Doğrulama[\s\S]*Uygulama[\s\S]*Veritabanı testi[\s\S]*SEO doğrulama[\s\S]*Tarama kontrolü[\s\S]*Geri alma noktası/);
+    // Rollback
+    await Promise.all([page.waitForURL(/ok=/), page.click('button:has-text("Rollback")')]);
+    await page.waitForSelector("text=Geri alındı");
+    assert.ok(!(await related(src)).includes(`href="${target}"`), "geri alma sonrası link sitede");
+    assert.equal((await c.query('select status from "AutopilotAction" where id=$1', [id])).rows[0].status, "rolled_back");
+  } finally {
+    await c.end();
+  }
+});
+
+await step("48 saat dolunca (test saati) zamanlayıcı işi öneriyi otomatik uygular; UI 'otomatik uygulandı' der; rollback", async () => {
+  const { default: pg } = await import("pg");
+  const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await c.connect();
+  try {
+    await page.goto("/yonetim/oneriler");
+    const card = page.locator("article[data-status=pending_approval]", { hasText: "iç link" }).first();
+    const { id, src, target } = await linkOf(card);
+    // 48 saat beklemek yerine yalnızca TEST veritabanında süre geçmişe alınır
+    // Prisma zamanları UTC (saat dilimsiz) saklar: yerel now() değil, UTC kullanılır
+    const upd = await c.query(`update "AutopilotAction" set "expiresAt" = (now() at time zone 'utc') - interval '1 minute' where id=$1 and "autoApply"=true`, [id]);
+    assert.equal(upd.rowCount, 1, "öneri otomatik uygulanabilir değil");
+    await Promise.all([page.waitForURL(/is=auto-apply-proposals/), page.click('button:has-text("Süresi dolan önerileri şimdi işle")')]);
+    let status = "";
+    for (let i = 0; i < 30 && status !== "applied"; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      status = (await c.query('select status from "AutopilotAction" where id=$1', [id])).rows[0].status;
+    }
+    assert.equal(status, "applied", "otomatik uygulanmadı");
+    assert.equal((await c.query('select "appliedVia" from "AutopilotAction" where id=$1', [id])).rows[0].appliedVia, "auto_48h");
+    assert.equal(Number((await c.query(`select count(*) from "AuditLog" where "entityId"=$1 and action='proposal.auto_apply'`, [id])).rows[0].count), 1);
+    assert.ok((await related(src)).includes(`href="${target}"`), "otomatik uygulama sitede görünmüyor");
+    await page.goto("/yonetim/oneriler?sekme=uygulanan");
+    const applied = page.locator(`article[data-proposal="${id}"]`);
+    assert.match(await applied.innerText(), /48 saatlik onay süresi doldu — otomatik uygulandı/);
+    await Promise.all([page.waitForURL(/ok=/), applied.locator('button:has-text("Rollback")').click()]);
+    await page.waitForSelector("text=Geri alındı");
+    assert.ok(!(await related(src)).includes(`href="${target}"`), "geri alma sonrası link sitede");
+  } finally {
+    await c.end();
+  }
+});
+
+await step("İçerik önerisi → Şimdi Uygula → yeni bölüm gerçek HTML'de; canonical/sitemap bozulmaz → Rollback", async () => {
+  const { default: pg } = await import("pg");
+  const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await c.connect();
+  const path = "/otel-web-tasarimi";
+  const heading = `Rezervasyon adımlarının sadeleştirilmesi ${stamp}`;
+  try {
+    const p = (await c.query('select id, body from "Page" where path=$1', [path])).rows[0];
+    const after = `${p.body.trimEnd()}\n\n## ${heading}\n\nOtel sitesinde ziyaretçi oda seçiminden rezervasyon talebine kadar az adımda ilerlemelidir. Tarih, oda tipi ve iletişim bilgisi aynı ekranda istenir; zorunlu olmayan alanlar kaldırılır. Mobilde form alanları büyük ve okunaklı olur, hata mesajları alanın hemen altında gösterilir.`;
+    const id = `e2econtent${stamp}`;
+    await c.query(`insert into "AutopilotAction" (id, type, risk, status, score, title, reason, "pageId", category, source, "riskLevel", "autoApply", "expiresAt", fingerprint, "proposedChanges", "createdAt")
+      values ($1, 'CONTENT', 'CONTROLLED', 'pending_approval', 40, $2, 'E2E içerik testi', $3, 'CONTENT', 'content', 'MEDIUM', true, (now() at time zone 'utc') + interval '48 hours', $1, $4, now() at time zone 'utc')`,
+      [id, `${path} içerik yenileme (E2E)`, p.id, JSON.stringify({ pages: [{ pageId: p.id, path, changes: [{ field: "body", before: p.body, after }] }] })]);
+    await page.goto(`/yonetim/oneriler/${id}`);
+    assert.match(await page.locator("#degisiklikler").innerText(), /Eklenecek bölüm/);
+    await Promise.all([page.waitForURL(/ok=/), page.click('button:text-is("Şimdi Uygula")')]);
+    await page.waitForSelector("text=sürüm geçmişine ve denetim loguna yazıldı");
+    const pub = await (await html(path)).text();
+    assert.ok(pub.includes(heading), "yeni bölüm sitede yok");
+    assert.match(pub, new RegExp(`<link rel="canonical" href="[^"]*${path}"`));
+    assert.match(await page.locator("[data-steps]").innerText(), /Tarama kontrolü[\s\S]*yeni bölüm görünüyor/);
+    await Promise.all([page.waitForURL(/ok=/), page.click('button:has-text("Rollback")')]);
+    await page.waitForSelector("text=Geri alındı");
+    assert.ok(!(await (await html(path)).text()).includes(heading), "geri alma sonrası bölüm sitede");
+  } finally {
+    await c.end();
+  }
+});
+
+await step("İçerik Planı: veriye dayalı bütçe, hizmet kararları, ilçe önceliği (doğrulanamayan kriter ayrı)", async () => {
+  await page.goto("/yonetim/icerik-plani");
+  await page.waitForSelector("text=Bütçe nasıl hesaplandı");
+  assert.match(await page.locator('[data-service="/seo-hizmeti"]').innerText(), /Mevcut sayfa karşılıyor/);
+  assert.match(await page.locator('[data-service="/teknik-seo"]').innerText(), /genişletilmeli/);
+  assert.equal(await page.locator("[data-district]").count(), 30);
+  assert.ok((await page.content()).includes("doğrulanamadı"));
+});
+
+await step("Rakipler: alan adı doğrulama + SSRF reddi; tarama hatası dürüst; detay sekmeleri, fırsat kartı, GSC durumu, Kontrol Merkezi", async () => {
+  const { default: pg } = await import("pg");
+  const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await c.connect();
+  try {
+    await c.query(`delete from "Competitor" where domain like '%e2e%'`);
+    for (const bad of ["127.0.0.1", "localhost", "servis.internal"]) {
+      await page.goto("/yonetim/rakipler");
+      await page.fill('input[name="domain"]', bad);
+      await Promise.all([page.waitForURL(/hata=/), page.click('button:has-text("Ekle ve tara")')]);
+    }
+    await page.goto("/yonetim/rakipler");
+    assert.match(await page.locator("[data-gsc]").innerText(), /Bağlı değil/);
+    assert.match(await page.locator("[data-discovery]").innerText(), /SERP/);
+    await c.query(`delete from "JobRun" where kind='competitor-crawl' and status in ('queued','running')`);
+    const domain = `rakip-e2e-${stamp}.example`;
+    await page.fill('input[name="domain"]', `https://www.${domain}/hizmet`);
+    await Promise.all([page.waitForURL(/\/yonetim\/rakipler\/\w+\?kuyruk=1/), page.click('button:has-text("Ekle ve tara")')]);
+    const id = new URL(page.url()).pathname.split("/").pop();
+    assert.equal((await c.query('select domain from "Competitor" where id=$1', [id])).rows[0].domain, domain);
+    // Eylem taramayı web isteğinde YAPMAZ: yalnızca kuyruğa alır (E2E sunucusunda zamanlayıcı kapalı → kuyrukta bekler)
+    assert.match(await page.locator('[data-crawl-state="queued"]').innerText(), /Tarama kuyruğa alındı/);
+    // Aynı formu 4 kez daha gönder (gerçek olaydaki 5 "ekle"): tek rakip, tek ekleme kaydı, tek kuyruk işi
+    for (let i = 0; i < 4; i++) {
+      await page.goto("/yonetim/rakipler");
+      await page.fill('input[name="domain"]', domain);
+      await Promise.all([page.waitForURL(/\/yonetim\/rakipler\/\w+\?/), page.click('button:has-text("Ekle ve tara")')]);
+    }
+    // "Şimdi tara" iki kez
+    for (let i = 0; i < 2; i++) await Promise.all([page.waitForURL(/kuyruk=1|taraniyor=1/), page.click('button:has-text("Şimdi tara")')]);
+    assert.equal(Number((await c.query('select count(*) from "Competitor" where domain=$1', [domain])).rows[0].count), 1, "mükerrer rakip");
+    assert.equal(Number((await c.query(`select count(*) from "AuditLog" where action='competitor.add' and "entityId"=$1`, [id])).rows[0].count), 1, "ekleme kaydı tekrarlandı");
+    assert.equal(Number((await c.query(`select count(*) from "JobRun" where kind='competitor-crawl' and status in ('queued','running')`)).rows[0].count), 1, "birden fazla tarama işi");
+    assert.equal(Number((await c.query('select count(*) from "CompetitorSnapshot" where "competitorId"=$1', [id])).rows[0].count), 0, "web isteği tarama yaptı");
+    await c.query(`delete from "JobRun" where kind='competitor-crawl' and status='queued'`);
+    await c.query(`update "Competitor" set "crawlRequestedAt"=null where id=$1`, [id]);
+    // Gözlenmiş rakip sayfaları (TEST veritabanı) → fırsat ve sekmeler
+    const ins = (path, cat, topics, h2, words) => c.query(`insert into "CompetitorPage" (id, "competitorId", url, path, status, title, h1, h2, "wordCount", "schemaTypes", links, category, topics) values ($1,$2,$3,$4,200,$5,$6,$7,$8,$9,'{}',$10,$11)`,
+      [`${id}${path.replace(/\W/g, "")}`, id, `https://rakip-e2e-${stamp}.example${path}`, path, `${path} başlık`, [`${path} h1`], h2, words, ["Service", "LocalBusiness"], cat, topics]);
+    await ins("/google-ads", "service", ["/google-ads-yonetimi"], ["Kurulum", "Ölçüm", "Bütçe", "Rapor", "Süreç", "SSS", "Strateji"], 1500);
+    await ins("/web-tasarim/sakarya", "location", [], [], 300);
+    await c.query(`update "Competitor" set "lastCrawlAt"=now() at time zone 'utc', "lastError"=null where id=$1`, [id]);
+    await page.goto(`/yonetim/rakipler/${id}`);
+    assert.ok(await page.locator('[data-finding="CONTENT_EXPANSION"]').count() > 0, "içerik genişletme fırsatı yok");
+    const card = await page.locator('[data-finding="CONTENT_EXPANSION"]').first().innerText();
+    for (const t of ["Rakipte var", "Bizde", "Neden önemli", "Kanıt", "Önerilen işlem", "Risk"]) assert.ok(card.includes(t), `kartta ${t} yok`);
+    assert.match(await page.locator('[data-finding="LOCAL_GAP"]').innerText(), /Uygulanmaz/);
+    for (const tab of ["teknik", "icerik", "hizmetler", "lokasyonlar", "kelimeler", "linkler", "degisiklik"]) {
+      await page.goto(`/yonetim/rakipler/${id}?sekme=${tab}`);
+      assert.equal(await page.locator("text=Application error").count(), 0, tab);
+    }
+    assert.match(await page.locator("main").innerText(), /doğrulanamaz|tahmin edilmez|Henüz değişiklik yok/);
+    await page.goto("/yonetim");
+    assert.ok(await page.locator("[data-competitor-section]").count(), "Kontrol Merkezi'nde rakip bölümü yok");
+    await c.query(`delete from "Competitor" where id=$1`, [id]);
+  } finally {
+    await c.end();
+  }
+});
+
+await step("Reddedilen öneri uygulanmaz", async () => {
+  await page.goto("/yonetim/oneriler");
+  const card = page.locator("article[data-status=pending_approval]").first();
+  const id = await card.getAttribute("data-proposal");
+  await Promise.all([page.waitForURL(/ok=/), card.locator('button:text-is("Reddet")').click()]);
+  await page.waitForSelector("text=Reddedildi; bu öneri uygulanmayacak");
+  await page.goto("/yonetim/oneriler?sekme=gecmis");
+  assert.equal(await page.locator(`article[data-proposal="${id}"][data-status=rejected]`).count(), 1);
 });
 
 await step("SEO ajanı panelleri: mod, puan düşüşleri, sayfa envanteri, anahtar kelime kararları, günlük rapor ve sistem durumu", async () => {

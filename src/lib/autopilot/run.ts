@@ -24,7 +24,7 @@ import { sendMail } from "../email/send";
 import { discoverKeywords } from "./discovery";
 import { ensureTopicClusters } from "./clusters";
 import { RECOMMENDED_ACTION, generateCandidates, scoreCandidate, selectTop, type Candidate } from "./decide";
-import { executeAction } from "./execute";
+import { applyProposal, createProposal } from "../proposals/lifecycle";
 import { evaluateExperiments } from "./experiments";
 import { learningStats } from "./learning";
 import { addDays, lastDataDay, pageMetrics } from "./metrics";
@@ -62,6 +62,7 @@ export type RunOptions = {
   skipStages?: number[]; // test/geliştirme: ör. canlı tarama
   sendEmail?: boolean;
   now?: Date;
+  crawlFetch?: typeof fetch | null; // uygulama hattının tarama kontrolü (test: null = doğrulanamaz)
 };
 
 export async function runAutopilot(opts: RunOptions = {}) {
@@ -78,7 +79,8 @@ export async function runAutopilot(opts: RunOptions = {}) {
     exec: Record<string, number>; plan: Candidate[];
     pageDecisions: { decision: string; primary: string; queries: number; impressions: number; path: string | null; reason: string }[];
     keywordDecisions: Record<string, number>; healthBefore: SeoHealth | null;
-  } = { candidates: [], selected: [], hasGsc: false, changedPaths: [], experiments: 0, exec: {}, plan: [], pageDecisions: [], keywordDecisions: {}, healthBefore: null };
+    toPropose: { c: Candidate; canAuto: boolean; proposal: Record<string, unknown>; noAutoReason: string | null }[];
+  } = { candidates: [], selected: [], hasGsc: false, changedPaths: [], experiments: 0, exec: {}, plan: [], pageDecisions: [], keywordDecisions: {}, healthBefore: null, toPropose: [] };
   const mode = agentMode(ap);
 
   const stage = async (n: number, fn: () => Promise<{ message: string; status?: "ok" | "skipped" }>) => {
@@ -198,7 +200,8 @@ export async function runAutopilot(opts: RunOptions = {}) {
     return { message: `En yüksek skor ${top ? `${top.score} (${top.title})` : "—"}${adj.length ? `; öğrenme çarpanları: ${adj.join(", ")}` : "; öğrenme için henüz yeterli sonuç yok"}${ctx.hasGsc ? "" : "; Search Console verisi olmadığı için yalnızca site içi sinyallerle skorlandı"}` };
   });
   await stage(13, async () => {
-    const applied = await db.autopilotAction.count({ where: { status: "applied", run: { weekKey: wk } } });
+    // Haftalık otomatik bütçe: uygulanmış + otomatik uygulanmak üzere bekleyen öneriler
+    const applied = await db.autopilotAction.count({ where: { OR: [{ status: "applied" }, { status: "pending_approval", autoApply: true }], run: { weekKey: wk } } });
     const budget = Math.max(0, ap.maxChangesPerWeek - applied);
     // Onay gerektiren işlemler de listede yer alır; otomatik değişiklik bütçesi ayrıca uygulanır
     const alreadyThisWeek = new Set((await db.autopilotAction.findMany({ where: { run: { weekKey: wk } }, select: { title: true } })).map((a) => a.title));
@@ -213,14 +216,15 @@ export async function runAutopilot(opts: RunOptions = {}) {
       const newPage = c.type === "NEW_PAGE"; // yeni sayfa kendi haftalık sınırına tabi (değişiklik bütçesini tüketmez)
       const canAuto = mode === "AUTONOMOUS" && isAuto && (newPage || autoLeft > 0) && (c.risk === "AUTO" ? ap.autoApplySafe : ap.autoApplyControlled);
       if (canAuto && !newPage) autoLeft--;
-      await db.autopilotAction.create({
-        data: {
-          runId: run.id, type: c.type, risk: c.risk, status: canAuto ? "planned" : isAuto ? "needs_approval" : "needs_approval", score: c.score,
-          title: c.title, reason: c.reason, pageId: c.pageId, query: c.query, clusterId: c.clusterId,
-          proposal: { pagePath: c.pagePath, payload: c.payload, parts: c.parts, evidence: c.evidence, recommendedAction: c.recommendedAction, expectedIntent: c.expectedIntent, ...(c.extra ?? {}) } as object,
-          qualityNotes: canAuto ? null : !isAuto ? "Yüksek riskli işlem: insan onayı gerekir" : mode === "ASSIST" ? "ASSIST modu: öneri hazır, onayla uygulanır" : autoLeft <= 0 ? "Haftalık otomatik değişiklik sınırı doldu" : "Bu risk sınıfında otomatik uygulama kapalı",
-        },
-      });
+      const proposal = { pagePath: c.pagePath, payload: c.payload, parts: c.parts, evidence: c.evidence, recommendedAction: c.recommendedAction, expectedIntent: c.expectedIntent, ...(c.extra ?? {}) };
+      if (!isAuto) {
+        // İnsan kararı (teknik/lokasyon/cannibalization): uygulanabilir değişiklik üretilmez
+        await db.autopilotAction.create({
+          data: { runId: run.id, type: c.type, risk: c.risk, status: "needs_approval", score: c.score, title: c.title, reason: c.reason, pageId: c.pageId, query: c.query, clusterId: c.clusterId, proposal: proposal as object, qualityNotes: "Yüksek riskli işlem: insan onayı gerekir", riskLevel: "HIGH", category: c.type === "LOCATION" ? "LOCAL" : "TECH", fingerprint: c.key },
+        });
+        continue;
+      }
+      ctx.toPropose.push({ c, canAuto, proposal, noAutoReason: canAuto ? null : mode === "ASSIST" ? "ASSIST modu: öneri hazır, onayla uygulanır" : autoLeft <= 0 ? "Haftalık otomatik değişiklik sınırı doldu" : "Bu risk sınıfında otomatik uygulama kapalı" });
     }
     ctx.plan = ctx.candidates.filter((c) => !ctx.selected.includes(c)).slice(0, 5);
     return { message: `${ctx.selected.length} işlem seçildi (haftalık otomatik bütçe ${budget}/${ap.maxChangesPerWeek})` };
@@ -237,13 +241,23 @@ export async function runAutopilot(opts: RunOptions = {}) {
   await stage(16, async () => {
     // Uygulamadan ÖNCE sağlık ölçümü (rapordaki önce/sonra karşılaştırması için)
     ctx.healthBefore = await computeSeoHealth({ fetchImpl: f }).catch(() => null);
-    const planned = await db.autopilotAction.findMany({ where: { runId: run.id, status: "planned" }, orderBy: { score: "desc" } });
-    for (const a of planned) {
-      const r = await executeAction(a.id, { allowControlled: ap.autoApplyControlled, model: settings.integrations.aiModel });
+    // Her öneri HAZIRLANIR (somut değişiklik + kalite kapısı) ve onay penceresine girer.
+    // Pencere 0 ise otomatik uygulanabilir öneri hemen aynı uygulama hattından geçer.
+    const windowH = ap.approvalWindowHours;
+    for (const { c, canAuto, proposal, noAutoReason } of ctx.toPropose.sort((a, b) => b.c.score - a.c.score)) {
+      const r = await createProposal(
+        { key: c.key, type: c.type, risk: c.risk, title: c.title, reason: c.reason, score: c.score, runId: run.id, pageId: c.pageId, query: c.query, clusterId: c.clusterId, proposal, allowAuto: canAuto, noAutoReason },
+        { model: settings.integrations.aiModel, windowHours: windowH },
+      );
       ctx.exec[r.status] = (ctx.exec[r.status] ?? 0) + 1;
-      if (r.status === "applied") ctx.changedPaths.push(...(r.changedPaths ?? []));
+      if (windowH === 0 && r.status === "pending_approval" && r.id && (await db.autopilotAction.findUnique({ where: { id: r.id }, select: { autoApply: true } }))?.autoApply) {
+        const ap2 = await applyProposal(r.id, { via: "autopilot", fetchImpl: opts.crawlFetch });
+        ctx.exec[ap2.status] = (ctx.exec[ap2.status] ?? 0) + 1;
+        if (ap2.ok) ctx.changedPaths.push(...(ap2.changedPaths ?? []));
+      }
     }
-    return { message: `${planned.length} işlem kalite kapısından geçirildi: ${Object.entries(ctx.exec).map(([k, v]) => `${k} ${v}`).join(", ") || "—"}` };
+    const pendingAuto = ctx.exec.pending_approval ?? 0;
+    return { message: `${ctx.toPropose.length} öneri hazırlandı: ${Object.entries(ctx.exec).map(([k, v]) => `${k} ${v}`).join(", ") || "—"}${windowH > 0 && pendingAuto ? ` · ${windowH} saat içinde onaylanmayan düşük/orta riskli öneriler otomatik uygulanır` : ""}` };
   });
   await stage(17, async () => {
     const n = ctx.exec.applied ?? 0;

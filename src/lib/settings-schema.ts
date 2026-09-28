@@ -129,6 +129,20 @@ export const autopilotSchema = z.object({
   autoApplySafe: z.boolean().default(true), // title, meta, iç link, kırık link
   autoApplyControlled: z.boolean().default(true), // doğrulanmış bilgiyle içerik genişletme
   maxChangesPerWeek: z.number().int().min(0).max(50).default(10),
+  // Öneri onay penceresi: bu süre içinde onaylanmayan düşük/orta riskli öneri otomatik
+  // uygulanır. 0 = pencere yok (güvenli öneri döngü içinde hemen uygulanır; eski davranış).
+  approvalWindowHours: z.number().int().min(0).max(168).default(48),
+});
+
+// Rakip tarayıcı sınırları (nazik tarama: tek rakip, düşük eşzamanlılık, istekler arası bekleme)
+export const competitorsSchema = z.object({
+  maxPages: z.number().int().min(1).max(300).default(60),
+  maxDepth: z.number().int().min(0).max(5).default(2),
+  concurrency: z.number().int().min(1).max(3).default(1),
+  timeoutMs: z.number().int().min(2000).max(30000).default(10000),
+  delayMs: z.number().int().min(250).max(10000).default(1000),
+  cacheHours: z.number().int().min(1).max(720).default(72),
+  maxBytes: z.number().int().min(100_000).max(5_000_000).default(2_000_000),
 });
 
 export const settingSchemas = {
@@ -139,6 +153,7 @@ export const settingSchemas = {
   robots: robotsSchema,
   email: emailSchema,
   autopilot: autopilotSchema,
+  competitors: competitorsSchema,
 } as const;
 
 export type SettingKey = keyof typeof settingSchemas;
@@ -149,7 +164,9 @@ export type IntegrationSettings = z.infer<typeof integrationsSchema>;
 export type RobotsSettings = z.infer<typeof robotsSchema>;
 export type EmailSettings = z.infer<typeof emailSchema>;
 export type AutopilotSettings = z.infer<typeof autopilotSchema>;
+export type CompetitorSettings = z.infer<typeof competitorsSchema>;
 export type AllSettings = {
+  competitors: CompetitorSettings;
   site: SiteSettings;
   seo: SeoSettings;
   business: BusinessSettings;
@@ -174,6 +191,7 @@ export function defaultSettings(): AllSettings {
     robots: parseSetting("robots", {}),
     email: parseSetting("email", {}),
     autopilot: parseSetting("autopilot", {}),
+    competitors: parseSetting("competitors", {}),
   };
 }
 

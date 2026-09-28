@@ -91,6 +91,9 @@ export function FixReview({ id, path, siteUrl, current, proposed, pending }: Pro
           <p className="font-display text-2xl">{shown("h1")}</p>
         </div>
       )}
+      {pending && rows.every((r) => proposed[r.key] === current[r.key]) && faq.length === 0 && (
+        <p className="text-xs text-warn" data-no-diff>Bu öneride mevcut değerlerden farklı bir alan yok; uygulamak için önerilen alanı düzenleyin.</p>
+      )}
       {pending && (
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => setPreview(!preview)} className="rounded-full border border-line px-4 py-2">{preview ? "Önizlemeyi kapat" : "Önizle"}</button>

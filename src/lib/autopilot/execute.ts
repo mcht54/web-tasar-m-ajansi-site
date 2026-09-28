@@ -15,7 +15,12 @@ import { wordCount } from "../text/analyze";
 import { containsPhrase, trLower, trUpperFirst } from "../text/slug";
 import { claudeAvailable, aiErrorMessage } from "../ai/claude";
 import { getSettingsFresh } from "../settings";
-import { aiPage, aiSection, aiSnippets } from "./ai";
+import { PROMPT_VERSION, aiFaq, aiIntro, aiPage, aiSection, aiSnippets } from "./ai";
+import { FIELD_EXECUTORS } from "./field-exec";
+import { classifyIntent } from "./intent";
+import { angleFor } from "../content/strategy";
+import { sanitizeAiText, unsafeMarkup } from "../content/sanitize";
+import { LOCATION_TYPES } from "../seo/location-quality";
 import { execNewPage, newPageGate, publishNewPage, rollbackNewPage } from "./new-page";
 import { checkAnchor, checkDescription, checkSection, checkTitle } from "./qc";
 import { startExperiment } from "./experiments";
@@ -27,10 +32,23 @@ type RelatedLink = { path: string; anchor: string; reason?: string };
 type Action = Awaited<ReturnType<typeof db.autopilotAction.findUniqueOrThrow>>;
 type Proposal = { pagePath?: string | null; payload?: Record<string, unknown>; section?: { heading: string; markdown: string }; alternatives?: unknown };
 
-export type ExecOutcome = { status: "applied" | "skipped" | "failed" | "needs_approval"; note: string; changedPaths?: string[] };
+export type FieldChange = { field: keyof PageInput; before: unknown; after: unknown };
+export type PageChangeSet = { pageId: string; path: string; changes: FieldChange[] };
+export type ProposedChanges = { pages: PageChangeSet[] };
+
+export type ExecOutcome = {
+  status: "applied" | "skipped" | "failed" | "needs_approval" | "prepared";
+  note: string;
+  changedPaths?: string[];
+  changes?: ProposedChanges; // prepared: uygulanacak somut değişiklik
+  noAuto?: string; // prepared ama otomatik uygulanmamalı (ör. elle düzenlenmiş alan)
+};
+
+/** Hazırlık modu: kalite kapısı çalışır, sayfaya yazılmaz; değişiklik listesi döner. */
+type PrepAction = Action & { prepareOnly?: boolean };
 
 /** AI çağrısı test ve geliştirme ortamında taklit edilebilir. */
-export const aiHooks = { snippets: aiSnippets, section: aiSection, page: aiPage, available: claudeAvailable };
+export const aiHooks = { snippets: aiSnippets, section: aiSection, page: aiPage, intro: aiIntro, faq: aiFaq, available: claudeAvailable };
 
 async function pageInput(pageId: string) {
   const page = await db.page.findUniqueOrThrow({ where: { id: pageId } });
@@ -51,7 +69,20 @@ async function manualEditBlock(pageId: string, field: keyof PageInput): Promise<
   return human ? `“${label}” alanı ${human.createdAt.toLocaleDateString("tr-TR")} tarihinde ${human.userName ?? "bir editör"} tarafından elle düzenlenmiş; son ${MANUAL_EDIT_GUARD_DAYS} gün içinde otomatik değişiklik yapılmaz. Öneri onay bekliyor.` : null;
 }
 
-async function commit(a: Action, pageId: string, field: keyof PageInput, value: unknown, note: string, opts: { approved?: boolean } = {}): Promise<ExecOutcome> {
+/** Tek alan değişikliği (hazırlık modunda yalnızca değişiklik listesi; aksi hâlde savePage). */
+export function commitField(a: Action, pageId: string, field: keyof PageInput, value: unknown, note: string, opts: { approved?: boolean } = {}) {
+  return commit(a, pageId, field, value, note, opts);
+}
+
+async function commit(a: PrepAction, pageId: string, field: keyof PageInput, value: unknown, note: string, opts: { approved?: boolean } = {}): Promise<ExecOutcome> {
+  if (a.prepareOnly) {
+    const { page, cur, input } = await pageInput(pageId);
+    // Saklanan değer, savePage'in kaydedeceği biçimle birebir aynı olmalı (kırpma vb.)
+    value = input({ [field]: value } as Partial<PageInput>)[field];
+    if (!diffFields({ [field]: cur[field] ?? null }, { [field]: value ?? null }).length) return { status: "skipped", note: "Değişiklik oluşmadı (değer zaten aynı)" };
+    const block = opts.approved ? null : await manualEditBlock(pageId, field);
+    return { status: "prepared", note, changes: { pages: [{ pageId, path: page.path, changes: [{ field, before: cur[field] ?? null, after: value ?? null }] }] }, ...(block ? { noAuto: block } : {}) };
+  }
   if (!opts.approved) {
     const block = await manualEditBlock(pageId, field);
     if (block) {
@@ -216,24 +247,49 @@ async function execContent(a: Action, model: string, allowControlled: boolean): 
   const { page } = await pageInput(a.pageId);
   const md = extractMarkdown(page.body);
   const sourceText = `${page.h1 ?? ""} ${page.intro ?? ""} ${md.text}`;
+  // Arama niyeti → anlatım açısı; benzer sayfaların başlıkları (aynı iskelet tekrarlanmasın)
+  const intent = classifyIntent(page.primaryKeyword ?? a.query ?? page.name, { hasLocation: LOCATION_TYPES.has(page.type) }).primary;
+  const angle = angleFor(page.path, LOCATION_TYPES.has(page.type) ? "LOCAL" : intent);
+  const published = await db.page.findMany({ where: { status: "PUBLISHED", robotsIndex: true, autoNoindex: false, id: { not: page.id } }, select: { path: true, h1: true, name: true, type: true, body: true, primaryKeyword: true } });
+  // Rakip başlıkları yalnızca "kopyalama" listesidir (konu sinyali; metin alınmaz)
+  const competitorHeadings = ((a.proposal as { competitorHeadings?: string[] } | null)?.competitorHeadings ?? []).slice(0, 30);
+  const avoidHeadings = [...published.filter((p) => p.type === page.type).flatMap((p) => extractMarkdown(p.body).headings.map((h) => h.text)), ...competitorHeadings];
+  const links = published.filter((p) => p.type !== "STATIC").map((p) => ({ path: p.path, title: p.h1 ?? p.name }));
   let section: { heading: string; markdown: string };
   try {
-    section = await aiHooks.section({ path: page.path, query: a.query, h1: page.h1 ?? page.name, headings: md.headings.map((h) => h.text), body: page.body ?? "", gaps: [a.reason] }, model);
+    const raw = await aiHooks.section({ path: page.path, query: a.query, h1: page.h1 ?? page.name, headings: md.headings.map((h) => h.text), body: page.body ?? "", gaps: [a.reason], intent, angle: angle.structure, cta: angle.cta, avoidHeadings, links }, model);
+    // Test/mock dahil her çıktı temizlenir; kaldırılan güvensiz öğe kayda geçer
+    const unsafe = unsafeMarkup(`${raw.heading}\n${raw.markdown}`);
+    section = { heading: sanitizeAiText(raw.heading).replace(/^#+\s*/, ""), markdown: sanitizeAiText(raw.markdown) };
+    if (unsafe.length) a = { ...a, proposal: { ...(a.proposal as object), sanitized: unsafe } as object };
   } catch (e) {
-    return { status: "failed", note: `Yapay zekâ: ${aiErrorMessage(e)}` };
+    return { status: "failed", note: `Yapay zekâ üretimi başarısız: ${aiErrorMessage(e)}` };
   }
+  const generation = { provider: "anthropic", model, promptVersion: PROMPT_VERSION.section, intent, angle: angle.key, generatedAt: new Date().toISOString() };
   const before = wordCount(sourceText);
   const added = wordCount(section.markdown);
   const qc = checkSection(`${section.heading}\n${section.markdown}`, { query: a.query, sourceText, beforeWords: before, addedWords: added, places: await placeNames(), otherPages: await otherPageTexts(page.id) });
-  await db.autopilotAction.update({ where: { id: a.id }, data: { proposal: { ...(a.proposal as object), section, qc } as object, qualityNotes: qc.problems.join("; ") || null } });
+  // İç link: yalnızca yayındaki sayfalara · Cannibalization: başka sayfanın hedef kelimesine yönelme
+  for (const l of extractMarkdown(section.markdown).links.filter((x) => x.href.startsWith("/"))) {
+    if (!links.some((p) => p.path === l.href.split("#")[0])) qc.problems.push(`Yayında olmayan sayfaya iç link: ${l.href}`);
+  }
+  const own = page.primaryKeyword ? trLower(page.primaryKeyword) : null;
+  const rival = published.find((p) => p.primaryKeyword && trLower(p.primaryKeyword) !== own && containsPhrase(section.heading, p.primaryKeyword));
+  if (rival) qc.problems.push(`Cannibalization: bölüm başlığı ${rival.path} sayfasının hedef kelimesini (“${rival.primaryKeyword}”) hedefliyor`);
+  if (competitorHeadings.some((h) => trLower(h.trim()) === trLower(section.heading.trim()))) qc.problems.push("Bölüm başlığı bir rakip sayfasının başlığıyla aynı (kopya yasak)");
+  qc.ok = qc.problems.length === 0;
+  await db.autopilotAction.update({ where: { id: a.id }, data: { proposal: { ...(a.proposal as object), section, qc, generation } as object, qualityNotes: qc.problems.join("; ") || null } });
   if (md.headings.some((h) => trLower(h.text) === trLower(section.heading))) return { status: "skipped", note: "Önerilen başlık sayfada zaten var" };
+  const body = `${(page.body ?? "").trimEnd()}\n\n## ${section.heading.replace(/^#+\s*/, "")}\n\n${section.markdown.trim()}\n`;
+  const note = `İçerik bölümü eklendi: “${section.heading}”`;
   if (!qc.ok) {
     const onlySize = qc.problems.every((p) => p.includes("%40"));
+    // Büyük değişiklik: öneri hazırlanır ama yalnızca insan onayıyla uygulanır
+    if (onlySize && (a as PrepAction).prepareOnly) return { ...(await commit(a, page.id, "body", body, note)), noAuto: qc.problems.join("; ") };
     return onlySize ? { status: "needs_approval", note: qc.problems.join("; ") } : { status: "skipped", note: `Kalite kapısı: ${qc.problems.join("; ")}` };
   }
   if (!allowControlled) return { status: "needs_approval", note: "Kontrollü otomatik uygulama kapalı; öneri onay bekliyor" };
-  const body = `${(page.body ?? "").trimEnd()}\n\n## ${section.heading.replace(/^#+\s*/, "")}\n\n${section.markdown.trim()}\n`;
-  return commit(a, page.id, "body", body, `İçerik bölümü eklendi: “${section.heading}”`);
+  return commit(a, page.id, "body", body, note);
 }
 
 /** Tek işlemi çalıştırır ve sonucu işleme yazar. */
@@ -277,17 +333,69 @@ export async function executeAction(actionId: string, opts: { allowControlled: b
   return r;
 }
 
-/** İnsan onayı: bekleyen kontrollü içerik önerisini uygular; diğer türlerde kararı kaydeder. */
+/**
+ * Öneriyi HAZIRLAR: uygulama anında yapılacak tüm hesap (alternatif üretimi, kalite kapısı,
+ * yapay zekâ bölümü, yeni sayfa taslağı + kapı) şimdi yapılır; sonuç somut değişiklik
+ * listesidir. Yayındaki sayfaya dokunulmaz (yeni sayfa taslağı görünmez kalır). Böylece
+ * kullanıcı onay penceresinde tam olarak neyin uygulanacağını görür.
+ */
+export async function prepareAction(actionId: string, opts: { model: string }): Promise<ExecOutcome> {
+  const found = await db.autopilotAction.findUniqueOrThrow({ where: { id: actionId } });
+  await loadAiKey();
+  const a: PrepAction = { ...found, prepareOnly: true };
+  try {
+    switch (a.type) {
+      case "TITLE": return await execTitle(a, opts.model);
+      case "META": return await execMeta(a, opts.model);
+      case "INTERNAL_LINK": return await execLink(a);
+      case "BROKEN_LINK": return await execBroken(a);
+      case "CONTENT": return await execContent(a, opts.model, true);
+      case "NEW_PAGE": return await execNewPage(a, { model: opts.model, prepareOnly: true });
+      default: {
+        const fx = FIELD_EXECUTORS[a.type];
+        if (fx) return await fx(a, opts.model);
+        return { status: "needs_approval", note: "Bu tür (teknik/lokasyon/cannibalization kararı) otomatik uygulanmaz; ilgili ekrandan elle yapılır." };
+      }
+    }
+  } catch (e) {
+    return { status: "failed", note: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * Onaylanan öneride sayfaya yazılabilecek somut bir değişiklik var mı? Yoksa gerçek neden
+ * döner (düğme gösterilmez; "onaylandı" deyip hiçbir şey yapmamak yasak).
+ */
+export function applyBlocker(a: Pick<Action, "type" | "pageId" | "proposal">): string | null {
+  const prop = (a.proposal ?? {}) as Proposal & { pageId?: string | null; group?: unknown };
+  switch (a.type) {
+    case "TITLE": case "META": return a.pageId ? null : "Öneriye bağlı sayfa yok";
+    case "INTERNAL_LINK": return prop.payload?.source && prop.payload?.target ? null : "Kaynak/hedef sayfa bilgisi yok";
+    case "BROKEN_LINK": return a.pageId && prop.payload?.to ? null : "Kırık linkin doğru hedefi bilinmiyor; sayfa editöründen düzeltin";
+    case "CONTENT":
+      if (prop.section && a.pageId) return null;
+      return aiHooks.available() ? null : "Bu öneride uygulanacak içerik yok: yapay zekâ anahtarı bağlı değil ve içerik kural tabanlı üretilmez (uydurma riski). Ayarlar → Entegrasyonlar'dan anahtar ekleyin veya sayfayı editörden genişletin.";
+    case "NEW_PAGE": return prop.group ? null : "Yeni sayfa önerisinde sorgu kümesi yok";
+    default: return "Bu tür (teknik/lokasyon/cannibalization kararı) otomatik uygulanmaz; ilgili ekrandan elle yapılır.";
+  }
+}
+
+/**
+ * İnsan onayı: öneriyi uygular. Uygulanamıyorsa hata fırlatır (sessiz başarı yok);
+ * uygulama denenip olmadıysa işlem onay listesinde kalır ve gerçek neden yazılır.
+ */
 export async function approveAction(user: SessionUser, id: string, model: string): Promise<ExecOutcome> {
   const a = await db.autopilotAction.findUniqueOrThrow({ where: { id } });
   if (a.status !== "needs_approval") throw new Error("Bu işlem onay beklemiyor");
+  const blocker = applyBlocker(a);
+  if (blocker) throw new Error(blocker);
   const prop = a.proposal as Proposal;
   if (a.type === "CONTENT" && prop.section && a.pageId) {
     const { page } = await pageInput(a.pageId);
     const body = `${(page.body ?? "").trimEnd()}\n\n## ${prop.section.heading}\n\n${prop.section.markdown.trim()}\n`;
     const r = await commit(a, page.id, "body", body, `İçerik bölümü (onaylayan: ${user.name})`, { approved: true });
     if (r.status === "applied") await startExperiment({ actionId: a.id, pageId: page.id, pagePath: page.path, type: a.type, query: a.query, appliedAt: new Date() });
-    else await db.autopilotAction.update({ where: { id }, data: { status: r.status, qualityNotes: r.note } });
+    else await db.autopilotAction.update({ where: { id }, data: { status: "needs_approval", qualityNotes: r.note } });
     return r;
   }
   if (a.type === "NEW_PAGE") {
@@ -302,10 +410,11 @@ export async function approveAction(user: SessionUser, id: string, model: string
     }
     return executeAction(id, { allowControlled: true, model, approvedBy: user.name });
   }
-  if (a.type === "TITLE" || a.type === "META" || (a.type === "BROKEN_LINK" && ((a.proposal as Proposal).payload ?? {}).to)) return executeAction(id, { allowControlled: true, model, approvedBy: user.name });
-  await db.autopilotAction.update({ where: { id }, data: { status: "approved", qualityNotes: `Onaylandı (${user.name}); uygulama editörde yapılır.` } });
-  await db.auditLog.create({ data: { userId: user.id, action: "autopilot.approve", entity: "autopilotAction", entityId: id } });
-  return { status: "needs_approval", note: "Onaylandı; değişikliği sayfa editöründen yapın" };
+  const r = await executeAction(id, { allowControlled: true, model, approvedBy: user.name });
+  await db.auditLog.create({ data: { userId: user.id, action: r.status === "applied" ? "autopilot.approve.apply" : "autopilot.approve.fail", entity: "autopilotAction", entityId: id, detail: { status: r.status, note: r.note } } });
+  // Uygulanamadıysa öneri kaybolmaz: onay listesinde gerçek nedenle kalır
+  if (r.status !== "applied") await db.autopilotAction.update({ where: { id }, data: { status: "needs_approval", qualityNotes: r.note } });
+  return r;
 }
 
 export async function rejectAction(user: SessionUser, id: string) {

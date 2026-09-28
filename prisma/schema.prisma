@@ -543,12 +543,81 @@ model SeoTask {
 // ─── Rakip analizi ───────────────────────────────────────────────────────────
 
 model Competitor {
-  id        String               @id @default(cuid())
-  domain    String               @unique
-  name      String?
-  notes     String?
-  createdAt DateTime             @default(now())
-  snapshots CompetitorSnapshot[]
+  id          String               @id @default(cuid())
+  domain      String               @unique
+  name        String?
+  notes       String?
+  createdAt   DateTime             @default(now())
+  // Tarama durumu (yalnızca gözlenen veri)
+  status      String               @default("active") // active | paused | error
+  source      String               @default("manual") // manual | serp | keyword
+  lastCrawlAt DateTime? // son BAŞARIYLA TAMAMLANAN taramanın bitişi
+  crawlStartedAt DateTime? // son tarama denemesinin başlangıcı
+  // Tarama kilidi (rakip başına tek tarama): atomik koşullu UPDATE ile alınır; kira süresi
+  // dolan kilit bir sonraki denemede devralınır (süreç çökse de kalıcı kilit olmaz)
+  crawlLockUntil DateTime?
+  crawlLockOwner String?
+  crawlRequestedAt DateTime? // panelden istendi; worker ilk fırsatta tarar
+  lastStatus  Int? // ana sayfa HTTP durumu
+  lastError   String?
+  snapshots   CompetitorSnapshot[] // tarama kayıtları (özet + istatistik)
+  pages       CompetitorPage[]
+  changes     CompetitorChange[]
+}
+
+// Rakip sayfa önbelleği: URL başına son gözlem. Önceki taramayla fark bu tablodan çıkar.
+model CompetitorPage {
+  id            String     @id @default(cuid())
+  competitorId  String
+  competitor    Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  url           String
+  path          String
+  status        Int
+  finalUrl      String?
+  title         String?
+  metaDescription String?
+  canonical     String?
+  robotsMeta    String?
+  h1            String[]
+  h2            String[]
+  wordCount     Int        @default(0)
+  contentHash   String?
+  schemaTypes   String[]
+  internalLinks Int        @default(0)
+  links         String[] // site içi bağlantı yolları (önbellekten gezinme için)
+  imagesNoAlt   Int        @default(0)
+  images        Int        @default(0)
+  inSitemap     Boolean    @default(false)
+  depth         Int        @default(0)
+  // 200 dönen ama başka bir sayfayla aynı içeriğe sahip (güçlü sinyal: özet + uzunluk + canonical);
+  // kayıt silinmez, canlı sayfa sayımına ve tarama bütçesine girmez
+  duplicateOf   String?
+  category      String? // çıkarım: home | service | sector | location | blog | about | contact | other
+  topics        String[] // çıkarım: hizmet kataloğu eşleşmeleri
+  etag          String?
+  lastModified  String?
+  firstSeenAt   DateTime   @default(now())
+  lastSeenAt    DateTime   @default(now())
+  fetchedAt     DateTime   @default(now())
+  removedAt     DateTime?
+
+  @@unique([competitorId, url])
+  @@index([competitorId, category])
+}
+
+// Rakip değişiklik geçmişi (iki tarama arası; yalnızca gözlenen farklar)
+model CompetitorChange {
+  id           String     @id @default(cuid())
+  competitorId String
+  competitor   Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  snapshotId   String?
+  kind         String // NEW_PAGE | REMOVED_PAGE | URL_CHANGE | TITLE | H1 | LENGTH | SCHEMA | NEW_SERVICE | NEW_LOCATION
+  url          String
+  before       String?
+  after        String?
+  createdAt    DateTime   @default(now())
+
+  @@index([competitorId, createdAt])
 }
 
 model CompetitorSnapshot {
@@ -744,13 +813,33 @@ model AutopilotRun {
   @@index([weekKey])
 }
 
+// Tek öneri tablosu: otopilot, içerik, rakip, hizmet, lokal ve performans önerileri.
+// Yaşam döngüsü: pending_approval (onay penceresi) → applying → applied | failed |
+// rejected | rolled_back; blocked = ön koşul eksik (uygulanamaz, düğme yok).
 model AutopilotAction {
-  id              String       @id @default(cuid())
-  runId           String
-  run             AutopilotRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-  type            String // TITLE | META | INTERNAL_LINK | BROKEN_LINK | CONTENT | LOCATION | TECH
+  id              String        @id @default(cuid())
+  runId           String? // otopilot döngüsü dışından gelen önerilerde boş
+  run             AutopilotRun? @relation(fields: [runId], references: [id], onDelete: Cascade)
+  type            String // TITLE | META | INTERNAL_LINK | BROKEN_LINK | CONTENT | LOCATION | TECH | NEW_PAGE
   risk            String // AUTO | CONTROLLED | HUMAN
-  status          String // planned | applied | needs_approval | skipped | failed | rolled_back | rejected
+  status          String // pending_approval | applying | applied | failed | rejected | rolled_back | blocked (eski: planned | needs_approval | skipped)
+  category        String        @default("SEO") // SEO | CONTENT | COMPETITOR | SERVICE | LOCAL | PERFORMANCE | TECH
+  source          String        @default("autopilot")
+  riskLevel       String? // LOW | MEDIUM | HIGH | CRITICAL
+  expiresAt       DateTime? // onay penceresinin sonu; boşsa otomatik uygulanmaz
+  autoApply       Boolean       @default(false) // süre dolunca otomatik uygulanabilir mi
+  proposedChanges Json? // { pages: [{ pageId, path, changes: [{ field, before, after }] }] }
+  beforeSnapshot  Json?
+  afterSnapshot   Json?
+  expectedImpact  String?
+  rejectedAt      DateTime?
+  rollbackAvailable Boolean     @default(false)
+  appliedVia      String? // manual | auto_48h | autopilot
+  decidedBy       String?
+  fingerprint     String? // aynı önerinin tekrar üretilmesini engeller
+  validation      Json? // uygulama hattı adımları: [{ step, status, note, at }]
+  attempts        Int           @default(0)
+  nextAttemptAt   DateTime? // otomatik uygulama hatasında yeniden deneme zamanı
   score           Int
   title           String
   reason          String
@@ -769,6 +858,9 @@ model AutopilotAction {
   experiment      Experiment?
 
   @@index([status])
+  @@index([status, expiresAt])
+  @@index([fingerprint])
+  @@index([category, status])
 }
 
 model Experiment {

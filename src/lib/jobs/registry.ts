@@ -11,6 +11,12 @@ import { runAutopilot } from "../autopilot/run";
 import { runAlarms } from "../autopilot/alarms";
 import { sendWeeklyEmail } from "../autopilot/weekly";
 import { sendDailyEmail } from "../autopilot/daily";
+import { runAutoApply } from "../proposals/lifecycle";
+import { runContentScan, type ScanKind } from "../content/scan";
+import { runCompletenessScan } from "../content/completeness";
+import { competitorDiscovery, crawlDueCompetitors, runCompetitorOpportunities } from "../competitors/jobs";
+import { enqueueJob } from "./runner";
+import { refreshPublic } from "../admin/pages";
 
 /** Son 26 saatte gerçekten değişen (alan logu olan) URL'leri IndexNow ile bildirir. */
 async function indexNowRecent() {
@@ -75,6 +81,50 @@ registerJob("autopilot", async (by) => {
   const msg = `${r.weekKey}: ${r.stages.filter((s) => s.status === "ok").length}/23 aşama tamam, uygulanan ${r.exec.applied ?? 0}`;
   if (r.errors) throw new Error(`${msg}; ${r.errors} aşama hatalı: ${r.stages.filter((s) => s.status === "error").map((s) => `${s.name} (${s.message})`).join("; ")}`);
   return { message: msg, stats: { runId: r.id } };
+});
+// 48 saatlik onay: süresi dolan düşük/orta riskli önerileri uygular. Tek tek öneri
+// hataları işi düşürmez (her biri kendi kaydında yeniden denenir / başarısız olur).
+registerJob("auto-apply-proposals", async () => {
+  const s = await runAutoApply();
+  const parts = [`süresi dolan ${s.due}`, `uygulanan ${s.applied}`, `yeniden denenecek ${s.retry}`, `başarısız ${s.failed}`, s.skipped ? `atlanan ${s.skipped}` : "", s.recovered ? `yarıda kalan ${s.recovered}` : "", s.expiredManual ? `süresi dolmuş ama insan onayı gereken ${s.expiredManual}` : ""].filter(Boolean);
+  if (s.applied) refreshPublic();
+  return { status: s.due || s.recovered ? "ok" : "skipped", message: parts.join(", "), stats: s };
+});
+// İçerik otopilotu: fırsat → öneri (48 saat). Yapay zekâ yoksa öneriler "uygulanamaz" olur.
+const contentJob = (kinds: ScanKind[]) => async () => {
+  const s = await runContentScan(kinds);
+  const created = Object.entries(s.created).map(([k, v]) => `${k} ${v}`).join(", ") || "yeni öneri yok";
+  return { status: (s.items.length ? "ok" : "skipped") as "ok" | "skipped", message: s.skippedReason ?? `${created} · bütçe: yeni sayfa ${s.budget.newPagesThisRun}/çalıştırma (${s.budget.newPagesPerWeek}/hafta), yenileme ${s.budget.refreshThisRun}/çalıştırma (${s.budget.refreshPerWeek}/hafta)`, stats: s };
+};
+registerJob("content-opportunity-scan", contentJob(["refresh"]));
+registerJob("service-page-opportunity", contentJob(["service"]));
+registerJob("local-seo-opportunity", contentJob(["local"]));
+// Rakip istihbaratı: keşif (kaynak yoksa açıkça söyler) → tarama + fark → fırsat taraması
+registerJob("competitor-discovery", async () => {
+  const d = await competitorDiscovery();
+  return { status: "skipped", message: d.available ? `${d.candidates.length} aday` : d.reason, stats: d };
+});
+registerJob("competitor-crawl", async () => {
+  const r = await crawlDueCompetitors();
+  if (!r.length) return { status: "skipped", message: "Tarama zamanı gelen rakip yok" };
+  // Değişiklik veya ilk tarama varsa fırsat taraması kuyruğa (bağımlılık: bu iş bitmeden başlamaz)
+  if (r.some((x) => x.ok)) await enqueueJob("competitor-opportunity-scan", "rakip taraması");
+  // Kilitli (başka süreç tarıyor) rakip hata değildir: hiç istek yapılmadan atlanmıştır
+  const failed = r.filter((x) => !x.ok && !x.locked);
+  const message = r.map((x) => (x.ok ? `${x.domain}: ${x.pages} sayfa, ${x.changes} değişiklik` : x.locked ? `${x.domain}: zaten taranıyor (atlandı)` : `${x.domain}: HATA — ${x.error}`)).join(" · ");
+  if (failed.length && failed.length === r.length) throw new Error(message);
+  return { message, stats: r };
+});
+registerJob("competitor-opportunity-scan", async () => {
+  const s = await runCompetitorOpportunities();
+  const created = Object.entries(s.created).map(([k, v]) => `${k} ${v}`).join(", ") || "yeni öneri yok";
+  return { status: s.findings ? "ok" : "skipped", message: s.skippedReason ?? `${s.findings} bulgu (${s.actionable} uygulanabilir) · öneriler: ${created}`, stats: s };
+});
+// Eksik alan taraması: her eksik alan mevcut 48 saatlik öneri hattına girer (taslak taslak kalır)
+registerJob("page-completeness-scan", async () => {
+  const s = await runCompletenessScan();
+  const created = Object.entries(s.created).map(([k, v]) => `${k} ${v}`).join(", ") || "yeni öneri yok";
+  return { status: (s.items.length ? "ok" : "skipped") as "ok" | "skipped", message: s.skippedReason ?? `${s.pages} sayfada ${s.gaps} eksik alan · öneriler: ${created}`, stats: s };
 });
 registerJob("alarms", async () => {
   const r = await runAlarms();

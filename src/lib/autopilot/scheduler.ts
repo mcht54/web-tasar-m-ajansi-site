@@ -29,7 +29,7 @@ export async function dueJobs(now = new Date()): Promise<JobKind[]> {
   const due: JobKind[] = [];
   const pending = new Set((await db.jobRun.findMany({ where: { status: { in: ["queued", "running"] } }, select: { kind: true } })).map((j) => j.kind));
   const lastOf = (kind: string) => db.jobRun.findFirst({ where: { kind, status: { not: "queued" } }, orderBy: { startedAt: "desc" }, select: { startedAt: true } });
-  const add = (k: JobKind) => { if (!pending.has(k)) due.push(k); };
+  const add = (k: JobKind) => { if (!pending.has(k) && !due.includes(k)) due.push(k); };
 
   if (tr.hour >= NIGHTLY_HOUR) {
     // Veri hattı: son 20 saatte çalışmadıysa (harici cron ile çakışmaz)
@@ -49,6 +49,30 @@ export async function dueJobs(now = new Date()): Promise<JobKind[]> {
     const sent = await db.emailLog.findFirst({ where: { kind: "weekly", createdAt: { gte: new Date(now.getTime() - 6 * 24 * HOUR) } } });
     if (!sent) add("weekly-email");
   }
+  // İçerik otopilotu (gece hattından sonra): yenileme günde bir, hizmet ve ilçe haftada bir.
+  // Üretim miktarı ayrıca veriye dayalı haftalık bütçeyle sınırlıdır (content/strategy.ts).
+  if (tr.hour >= NIGHTLY_HOUR + 1) {
+    const every = async (kind: JobKind, hours: number) => {
+      const last = await lastOf(kind);
+      if (!last || now.getTime() - last.startedAt.getTime() > hours * HOUR) add(kind);
+    };
+    await every("content-opportunity-scan", 20);
+    await every("service-page-opportunity", 6.5 * 24);
+    await every("local-seo-opportunity", 6.5 * 24);
+    await every("page-completeness-scan", 20);
+    // Rakip: tarama işi günde bir kontrol eder (her rakip haftada bir taranır); fırsat
+    // taraması tarama sonrasında kuyruğa girer, ayrıca haftalık yedek çalışma
+    if ((await db.competitor.count({ where: { status: { not: "paused" } } })) > 0) {
+      await every("competitor-crawl", 20);
+      await every("competitor-opportunity-scan", 6.5 * 24);
+    }
+    await every("competitor-discovery", 6.5 * 24);
+  }
+  // Panelden istenen rakip taraması: saat beklemeden kuyruğa (tarama worker'da, rakip kilidiyle)
+  if (await db.competitor.count({ where: { crawlRequestedAt: { not: null }, status: { not: "paused" } } })) add("competitor-crawl");
+  // 48 saatlik onay: süresi dolan öneriler 15 dakikada bir kontrol edilir (panel kapalı olsa da)
+  const autoApply = await lastOf("auto-apply-proposals");
+  if (!autoApply || now.getTime() - autoApply.startedAt.getTime() >= 15 * 60_000 - 30_000) add("auto-apply-proposals");
   // Kritik alarmlar: saatte bir
   const alarms = await lastOf("alarms");
   if (!alarms || now.getTime() - alarms.startedAt.getTime() >= HOUR - 60_000) add("alarms");

@@ -178,6 +178,7 @@ export async function saveAutopilotAction(f: FormData) {
   await persist("autopilot", {
     mode: str(f, "mode") || "AUTONOMOUS", enabled: true, autoApplySafe: f.get("autoApplySafe") === "on", autoApplyControlled: f.get("autoApplyControlled") === "on",
     maxChangesPerWeek: Number(f.get("maxChangesPerWeek")), maxNewPagesPerWeek: Number(f.get("maxNewPagesPerWeek") ?? 3),
+    approvalWindowHours: Number(f.get("approvalWindowHours") ?? 48),
   }, "otopilot", user.id);
 }
 

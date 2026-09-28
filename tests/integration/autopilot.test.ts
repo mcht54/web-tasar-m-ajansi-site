@@ -13,6 +13,7 @@ import { learningStats } from "@/lib/autopilot/learning";
 import { runAlarms } from "@/lib/autopilot/alarms";
 import { NO_DATA_TEXT } from "@/lib/autopilot/report";
 import { dueJobs } from "@/lib/autopilot/scheduler";
+import { runAutoApply } from "@/lib/proposals/lifecycle";
 
 const BASE = "https://webtasarimajansi.net";
 const day = (n: number) => new Date(Date.now() - n * 86400_000).toISOString().slice(0, 10);
@@ -136,7 +137,7 @@ describe("Search Console verisiyle haftalık döngü", () => {
       const blocked = await runAutopilot({ trigger: "test", fetchImpl: fakeWorld(), skipStages: [6], sendEmail: false });
       const acts = await db.autopilotAction.findMany({ where: { runId: blocked.id } });
       expect(acts.filter((a) => a.status === "applied")).toEqual([]);
-      expect(acts.some((a) => a.qualityNotes === "Haftalık otomatik değişiklik sınırı doldu")).toBe(true);
+      expect(acts.some((a) => a.qualityNotes?.includes("Haftalık otomatik değişiklik sınırı doldu"))).toBe(true);
       await db.autopilotAction.deleteMany({ where: { runId: blocked.id } });
     }
     await saveSetting("autopilot", { maxChangesPerWeek: 40 });
@@ -149,9 +150,20 @@ describe("Search Console verisiyle haftalık döngü", () => {
     expect(kw?.cluster?.targetPageId).toBeTruthy();
     const actions = await db.autopilotAction.findMany({ where: { runId } });
     expect(actions.length).toBeLessThanOrEqual(10);
-    const title = actions.find((a) => a.type === "TITLE" && a.query === "kurumsal web sitesi");
+    let title = actions.find((a) => a.type === "TITLE" && a.query === "kurumsal web sitesi");
     expect(title, JSON.stringify(actions.map((a) => [a.type, a.query, a.status, a.qualityNotes]))).toBeTruthy();
-    expect(title!.status).toBe("applied");
+    // 48 saatlik onay: döngü değişikliği hazırlar (somut title + kalite kapısı), hemen uygulamaz
+    expect(title!.status, title!.qualityNotes ?? "").toBe("pending_approval");
+    expect(title!.autoApply).toBe(true);
+    expect(title!.expiresAt!.getTime() - title!.createdAt.getTime()).toBe(48 * 3600_000);
+    const untouched = await db.page.findUniqueOrThrow({ where: { id: title!.pageId! } });
+    expect(untouched.seoTitle ?? "").not.toContain("kurumsal web sitesi");
+    // Onay gelmeden 48 saat dolar → otomatik uygulama
+    const s = await runAutoApply({ now: new Date(Date.now() + 49 * 3600_000), fetchImpl: null, max: 100 });
+    expect(s.applied).toBeGreaterThan(0);
+    title = await db.autopilotAction.findUniqueOrThrow({ where: { id: title!.id } });
+    expect(title.status, title.error ?? "").toBe("applied");
+    expect(title.appliedVia).toBe("auto_48h");
     const page = await db.page.findUniqueOrThrow({ where: { id: title!.pageId! } });
     expect(page.seoTitle?.toLocaleLowerCase("tr")).toContain("kurumsal web sitesi");
     expect(page.seoTitle!.length).toBeLessThanOrEqual(60);
