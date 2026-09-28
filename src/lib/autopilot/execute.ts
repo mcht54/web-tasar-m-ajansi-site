@@ -15,7 +15,11 @@ import { wordCount } from "../text/analyze";
 import { containsPhrase, trLower, trUpperFirst } from "../text/slug";
 import { claudeAvailable, aiErrorMessage } from "../ai/claude";
 import { getSettingsFresh } from "../settings";
-import { aiPage, aiSection, aiSnippets } from "./ai";
+import { PROMPT_VERSION, aiPage, aiSection, aiSnippets } from "./ai";
+import { classifyIntent } from "./intent";
+import { angleFor } from "../content/strategy";
+import { sanitizeAiText, unsafeMarkup } from "../content/sanitize";
+import { LOCATION_TYPES } from "../seo/location-quality";
 import { execNewPage, newPageGate, publishNewPage, rollbackNewPage } from "./new-page";
 import { checkAnchor, checkDescription, checkSection, checkTitle } from "./qc";
 import { startExperiment } from "./experiments";
@@ -66,7 +70,9 @@ async function manualEditBlock(pageId: string, field: keyof PageInput): Promise<
 
 async function commit(a: PrepAction, pageId: string, field: keyof PageInput, value: unknown, note: string, opts: { approved?: boolean } = {}): Promise<ExecOutcome> {
   if (a.prepareOnly) {
-    const { page, cur } = await pageInput(pageId);
+    const { page, cur, input } = await pageInput(pageId);
+    // Saklanan değer, savePage'in kaydedeceği biçimle birebir aynı olmalı (kırpma vb.)
+    value = input({ [field]: value } as Partial<PageInput>)[field];
     if (!diffFields({ [field]: cur[field] ?? null }, { [field]: value ?? null }).length) return { status: "skipped", note: "Değişiklik oluşmadı (değer zaten aynı)" };
     const block = opts.approved ? null : await manualEditBlock(pageId, field);
     return { status: "prepared", note, changes: { pages: [{ pageId, path: page.path, changes: [{ field, before: cur[field] ?? null, after: value ?? null }] }] }, ...(block ? { noAuto: block } : {}) };
@@ -235,16 +241,35 @@ async function execContent(a: Action, model: string, allowControlled: boolean): 
   const { page } = await pageInput(a.pageId);
   const md = extractMarkdown(page.body);
   const sourceText = `${page.h1 ?? ""} ${page.intro ?? ""} ${md.text}`;
+  // Arama niyeti → anlatım açısı; benzer sayfaların başlıkları (aynı iskelet tekrarlanmasın)
+  const intent = classifyIntent(page.primaryKeyword ?? a.query ?? page.name, { hasLocation: LOCATION_TYPES.has(page.type) }).primary;
+  const angle = angleFor(page.path, LOCATION_TYPES.has(page.type) ? "LOCAL" : intent);
+  const published = await db.page.findMany({ where: { status: "PUBLISHED", robotsIndex: true, autoNoindex: false, id: { not: page.id } }, select: { path: true, h1: true, name: true, type: true, body: true, primaryKeyword: true } });
+  const avoidHeadings = published.filter((p) => p.type === page.type).flatMap((p) => extractMarkdown(p.body).headings.map((h) => h.text));
+  const links = published.filter((p) => p.type !== "STATIC").map((p) => ({ path: p.path, title: p.h1 ?? p.name }));
   let section: { heading: string; markdown: string };
   try {
-    section = await aiHooks.section({ path: page.path, query: a.query, h1: page.h1 ?? page.name, headings: md.headings.map((h) => h.text), body: page.body ?? "", gaps: [a.reason] }, model);
+    const raw = await aiHooks.section({ path: page.path, query: a.query, h1: page.h1 ?? page.name, headings: md.headings.map((h) => h.text), body: page.body ?? "", gaps: [a.reason], intent, angle: angle.structure, cta: angle.cta, avoidHeadings, links }, model);
+    // Test/mock dahil her çıktı temizlenir; kaldırılan güvensiz öğe kayda geçer
+    const unsafe = unsafeMarkup(`${raw.heading}\n${raw.markdown}`);
+    section = { heading: sanitizeAiText(raw.heading).replace(/^#+\s*/, ""), markdown: sanitizeAiText(raw.markdown) };
+    if (unsafe.length) a = { ...a, proposal: { ...(a.proposal as object), sanitized: unsafe } as object };
   } catch (e) {
-    return { status: "failed", note: `Yapay zekâ: ${aiErrorMessage(e)}` };
+    return { status: "failed", note: `Yapay zekâ üretimi başarısız: ${aiErrorMessage(e)}` };
   }
+  const generation = { provider: "anthropic", model, promptVersion: PROMPT_VERSION.section, intent, angle: angle.key, generatedAt: new Date().toISOString() };
   const before = wordCount(sourceText);
   const added = wordCount(section.markdown);
   const qc = checkSection(`${section.heading}\n${section.markdown}`, { query: a.query, sourceText, beforeWords: before, addedWords: added, places: await placeNames(), otherPages: await otherPageTexts(page.id) });
-  await db.autopilotAction.update({ where: { id: a.id }, data: { proposal: { ...(a.proposal as object), section, qc } as object, qualityNotes: qc.problems.join("; ") || null } });
+  // İç link: yalnızca yayındaki sayfalara · Cannibalization: başka sayfanın hedef kelimesine yönelme
+  for (const l of extractMarkdown(section.markdown).links.filter((x) => x.href.startsWith("/"))) {
+    if (!links.some((p) => p.path === l.href.split("#")[0])) qc.problems.push(`Yayında olmayan sayfaya iç link: ${l.href}`);
+  }
+  const own = page.primaryKeyword ? trLower(page.primaryKeyword) : null;
+  const rival = published.find((p) => p.primaryKeyword && trLower(p.primaryKeyword) !== own && containsPhrase(section.heading, p.primaryKeyword));
+  if (rival) qc.problems.push(`Cannibalization: bölüm başlığı ${rival.path} sayfasının hedef kelimesini (“${rival.primaryKeyword}”) hedefliyor`);
+  qc.ok = qc.problems.length === 0;
+  await db.autopilotAction.update({ where: { id: a.id }, data: { proposal: { ...(a.proposal as object), section, qc, generation } as object, qualityNotes: qc.problems.join("; ") || null } });
   if (md.headings.some((h) => trLower(h.text) === trLower(section.heading))) return { status: "skipped", note: "Önerilen başlık sayfada zaten var" };
   const body = `${(page.body ?? "").trimEnd()}\n\n## ${section.heading.replace(/^#+\s*/, "")}\n\n${section.markdown.trim()}\n`;
   const note = `İçerik bölümü eklendi: “${section.heading}”`;

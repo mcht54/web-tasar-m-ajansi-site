@@ -19,6 +19,7 @@ export const MENU: MenuSection[] = [
   ] },
   { title: "SEO", items: [
     { href: "/yonetim/oneriler", label: "Öneriler (48 saat onay)", perm: "seo" },
+    { href: "/yonetim/icerik-plani", label: "İçerik Planı", perm: "seo" },
     { href: "/yonetim/autopilot", label: "SEO Otopilot", perm: "seo" },
     { href: "/yonetim/anahtar-kelimeler", label: "Anahtar Kelimeler", perm: "seo" },
     { href: "/yonetim/seo-analiz", label: "SEO Analiz", perm: "seo" },

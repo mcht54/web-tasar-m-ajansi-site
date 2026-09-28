@@ -12,6 +12,7 @@ import { runAlarms } from "../autopilot/alarms";
 import { sendWeeklyEmail } from "../autopilot/weekly";
 import { sendDailyEmail } from "../autopilot/daily";
 import { runAutoApply } from "../proposals/lifecycle";
+import { runContentScan, type ScanKind } from "../content/scan";
 import { refreshPublic } from "../admin/pages";
 
 /** Son 26 saatte gerçekten değişen (alan logu olan) URL'leri IndexNow ile bildirir. */
@@ -86,6 +87,15 @@ registerJob("auto-apply-proposals", async () => {
   if (s.applied) refreshPublic();
   return { status: s.due || s.recovered ? "ok" : "skipped", message: parts.join(", "), stats: s };
 });
+// İçerik otopilotu: fırsat → öneri (48 saat). Yapay zekâ yoksa öneriler "uygulanamaz" olur.
+const contentJob = (kinds: ScanKind[]) => async () => {
+  const s = await runContentScan(kinds);
+  const created = Object.entries(s.created).map(([k, v]) => `${k} ${v}`).join(", ") || "yeni öneri yok";
+  return { status: (s.items.length ? "ok" : "skipped") as "ok" | "skipped", message: s.skippedReason ?? `${created} · bütçe: yeni sayfa ${s.budget.newPagesThisRun}/çalıştırma (${s.budget.newPagesPerWeek}/hafta), yenileme ${s.budget.refreshThisRun}/çalıştırma (${s.budget.refreshPerWeek}/hafta)`, stats: s };
+};
+registerJob("content-opportunity-scan", contentJob(["refresh"]));
+registerJob("service-page-opportunity", contentJob(["service"]));
+registerJob("local-seo-opportunity", contentJob(["local"]));
 registerJob("alarms", async () => {
   const r = await runAlarms();
   const active = r.checks.filter((c) => c.active);

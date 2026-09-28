@@ -49,6 +49,17 @@ export async function dueJobs(now = new Date()): Promise<JobKind[]> {
     const sent = await db.emailLog.findFirst({ where: { kind: "weekly", createdAt: { gte: new Date(now.getTime() - 6 * 24 * HOUR) } } });
     if (!sent) add("weekly-email");
   }
+  // İçerik otopilotu (gece hattından sonra): yenileme günde bir, hizmet ve ilçe haftada bir.
+  // Üretim miktarı ayrıca veriye dayalı haftalık bütçeyle sınırlıdır (content/strategy.ts).
+  if (tr.hour >= NIGHTLY_HOUR + 1) {
+    const every = async (kind: JobKind, hours: number) => {
+      const last = await lastOf(kind);
+      if (!last || now.getTime() - last.startedAt.getTime() > hours * HOUR) add(kind);
+    };
+    await every("content-opportunity-scan", 20);
+    await every("service-page-opportunity", 6.5 * 24);
+    await every("local-seo-opportunity", 6.5 * 24);
+  }
   // 48 saatlik onay: süresi dolan öneriler 15 dakikada bir kontrol edilir (panel kapalı olsa da)
   const autoApply = await lastOf("auto-apply-proposals");
   if (!autoApply || now.getTime() - autoApply.startedAt.getTime() >= 15 * 60_000 - 30_000) add("auto-apply-proposals");

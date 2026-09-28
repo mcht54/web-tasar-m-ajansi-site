@@ -8,6 +8,7 @@ const LABEL: Record<string, string> = {
   indexnow: "IndexNow gönder / yeniden dene", "sitemap-check": "Sitemap'i doğrula",
   autopilot: "Otopilot döngüsünü şimdi çalıştır", alarms: "Alarmları kontrol et", "weekly-email": "Haftalık raporu şimdi gönder", "daily-email": "Günlük raporu şimdi gönder",
   "auto-apply-proposals": "Süresi dolan önerileri şimdi işle",
+  "content-opportunity-scan": "İçerik yenileme taraması", "service-page-opportunity": "Hizmet sayfası taraması", "local-seo-opportunity": "İlçe (lokal SEO) taraması",
 };
 
 /** İşi tetikleyen buton + son çalıştırma durumu. */

@@ -21,11 +21,20 @@ import { checkSection } from "./qc";
 import { matchTopic } from "./clusters";
 import { startExperiment } from "./experiments";
 import { AUTOPILOT_USER, aiHooks, type ExecOutcome } from "./execute";
+import { PROMPT_VERSION } from "./ai";
+import { angleFor } from "../content/strategy";
+import { sanitizeDeep, unsafeMarkup } from "../content/sanitize";
 
 type Action = Awaited<ReturnType<typeof db.autopilotAction.findUniqueOrThrow>>;
 export type GateCheck = { label: string; status: "PASS" | "FAIL" | "WARNING"; note: string };
 type Group = { primary: string; queries: string[]; impressions: number; intent: string; location: { provinceId: number; districtId: number | null } | null };
-type NewPageProposal = { pagePath: string; decision: string; pageType: string; pageId: string | null; group: Group; parentPath?: string | null };
+type NewPageProposal = { pagePath: string; decision: string; pageType: string; pageId: string | null; group: Group; parentPath?: string | null; service?: { name: string; summary?: string | null } };
+
+/** Hizmetin verildiği İşletme ayarlarındaki "Hizmetler" listesinde yazılı mı (Türkçe büyük/küçük harf duyarsız)? */
+export function serviceVerified(name: string, services: string[]): boolean {
+  const n = normalizeKeyword(name);
+  return services.some((s) => normalizeKeyword(s) === n);
+}
 
 /** Yeni sayfalar için haftalık üst sınır (ölçekli içerik / doorway koruması). */
 async function newPagesThisWeek(): Promise<number> {
@@ -128,27 +137,49 @@ export async function execNewPage(a: Action, opts: { model: string; approved?: b
     const blockers = g?.items.filter((i) => i.critical && i.status === "FAIL" && ["business", "local", "relation"].includes(i.key)) ?? [];
     if (blockers.length) return { status: "needs_approval", note: `İnsan doğrulaması gerekiyor: ${blockers.map((b) => `${b.label} (${b.note})`).join("; ")}` };
   }
+  // Hizmet sayfası: hizmetin gerçekten verildiği İşletme ayarlarında doğrulanmış olmalı
+  const kind: "LOCATION" | "SERVICE" | "BLOG_POST" = existing && LOCATION_TYPES.has(existing.type) ? "LOCATION" : prop.pageType === "SERVICE" ? "SERVICE" : "BLOG_POST";
+  if (kind === "SERVICE") {
+    const name = prop.service?.name ?? group.primary;
+    if (!serviceVerified(name, settings.business.services)) return { status: "needs_approval", note: `“${name}” hizmetinin verildiği doğrulanmadı: Ayarlar → İşletme → Hizmetler listesinde yok. Verilmeyen hizmet için sayfa açılmaz.` };
+  }
   if (!aiHooks.available()) return { status: "needs_approval", note: "Yapay zekâ anahtarı yok: sayfa içeriği uydurulmadan üretilemez (ANTHROPIC_API_KEY)." };
 
   const state = await loadSiteState();
   const links = state.pages.filter((p) => p.status === "PUBLISHED" && p.robotsIndex && !p.autoNoindex && p.type !== "STATIC").map((p) => ({ path: p.path, title: p.h1 ?? p.name }));
   const facts = await verifiedFacts(existing?.id ?? null);
+  const pageType = kind === "LOCATION" ? existing!.type : kind;
+  const angle = angleFor(prop.pagePath, kind === "LOCATION" ? "LOCAL" : group.intent);
+  const avoidHeadings = state.pages.filter((p) => p.status === "PUBLISHED" && p.type === pageType).flatMap((p) => extractMarkdown(p.body).headings.map((h) => h.text));
   let content;
+  let unsafe: string[] = [];
   try {
-    content = await aiHooks.page({
-      kind: existing && LOCATION_TYPES.has(existing.type) ? "LOCATION" : "BLOG_POST", primary: group.primary, queries: group.queries, intent: group.intent,
+    const raw = await aiHooks.page({
+      kind, primary: group.primary, queries: group.queries, intent: group.intent, angle: angle.structure, cta: angle.cta, avoidHeadings,
       siteName: settings.site.siteName, facts, links, existingTitles: state.pages.filter((p) => p.status === "PUBLISHED").map((p) => resolveTitle(p, settings.seo)),
     }, opts.model);
+    // Test/mock dahil her çıktı temizlenir (HTML etiketi, tehlikeli bağlantı, görünmez karakter)
+    unsafe = unsafeMarkup(JSON.stringify(raw));
+    content = sanitizeDeep(raw);
   } catch (e) {
-    return { status: "failed", note: `Yapay zekâ: ${aiErrorMessage(e)} — yarım içerik kaydedilmedi` };
+    return { status: "failed", note: `Yapay zekâ üretimi başarısız: ${aiErrorMessage(e)} — yarım içerik kaydedilmedi` };
   }
+  const generation = { provider: "anthropic", model: opts.model, promptVersion: PROMPT_VERSION.page, kind, intent: group.intent, angle: angle.key, generatedAt: new Date().toISOString(), ...(unsafe.length ? { sanitized: unsafe } : {}) };
   // Taslak oluştur / doldur (her zaman TASLAK; sürüm geçmişi)
   let pageId = existing?.id ?? null;
   if (!pageId) {
-    const r = await createPage(AUTOPILOT_USER, { path: prop.pagePath, type: "BLOG_POST", name: content.h1.slice(0, 160), h1: content.h1.slice(0, 200), breadcrumbLabel: null, primaryKeyword: group.primary, category: "Rehber", serviceId: null, provinceId: null, districtId: null, sectorId: null });
+    let serviceId: string | null = null;
+    if (kind === "SERVICE") {
+      // Hizmet kaydı görünmez başlar: menüde yok, yayında sayfası olmadan hiçbir yerde listelenmez
+      const slug = prop.pagePath.replace(/^\//, "");
+      const svc = await db.service.upsert({ where: { slug }, create: { slug, name: prop.service?.name ?? group.primary, summary: prop.service?.summary ?? null, active: true, showInNav: false, allowLocationPages: false, sortOrder: 100 }, update: {} });
+      serviceId = svc.id;
+    }
+    const r = await createPage(AUTOPILOT_USER, { path: prop.pagePath, type: kind === "SERVICE" ? "SERVICE" : "BLOG_POST", name: content.h1.slice(0, 160), h1: content.h1.slice(0, 200), breadcrumbLabel: null, primaryKeyword: group.primary, category: kind === "SERVICE" ? null : "Rehber", serviceId, provinceId: null, districtId: null, sectorId: null });
     if (!r.ok) return { status: "failed", note: r.error };
     pageId = r.pageId;
   }
+  await db.autopilotAction.update({ where: { id: a.id }, data: { proposal: { ...prop, generation } as object } });
   const draft = await savePage(AUTOPILOT_USER, pageId, await inputFor(pageId, {
     status: "DRAFT", seoTitle: content.seoTitle.trim(), metaDescription: content.metaDescription.trim(), h1: content.h1.trim(), intro: content.intro.trim(), body: content.body.trim(),
     faq: content.faq.slice(0, 6), primaryKeyword: group.primary, secondaryKeywords: group.queries.filter((q) => q !== group.primary).slice(0, 10),
@@ -162,7 +193,7 @@ export async function execNewPage(a: Action, opts: { model: string; approved?: b
     await savePage(AUTOPILOT_USER, parent.id, await inputFor(parent.id, { relatedLinks: rel }), `Otopilot: yeni sayfaya iç link (${page.path})`);
   }
   const gate = await newPageGate(pageId, group);
-  await db.autopilotAction.update({ where: { id: a.id }, data: { pageId, proposal: { ...prop, pageId, parentPath: parent?.path ?? null, gate: gate.checks, verifyNotes: content.verifyNotes } as object } });
+  await db.autopilotAction.update({ where: { id: a.id }, data: { pageId, proposal: { ...prop, pageId, parentPath: parent?.path ?? null, gate: gate.checks, verifyNotes: content.verifyNotes, generation } as object } });
   const fails = gate.checks.filter((c) => c.status === "FAIL");
   if (!gate.ok) return { status: "needs_approval", note: `Kalite kapısı: ${fails.map((f) => `${f.label} — ${f.note}`).join("; ")}. Sayfa TASLAK olarak saklandı.` };
   // Hazırlık: taslak hazır ve kapıyı geçti; uygulanacak tek değişiklik yayına alma

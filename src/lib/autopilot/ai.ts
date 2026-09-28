@@ -7,6 +7,7 @@ import "server-only";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { anthropicClient } from "../ai/claude";
+import { sanitizeDeep } from "../content/sanitize";
 
 const SYSTEM = `Sen Türkçe yazan kıdemli bir SEO editörüsün. Bir web tasarım ajansının sitesindeki mevcut sayfaları iyileştiriyorsun.
 Kesin kurallar:
@@ -58,19 +59,33 @@ export function aiSnippets(c: SnippetContext, model: string) {
   ].join("\n"), model);
 }
 
-export type SectionContext = { path: string; query: string | null; h1: string; headings: string[]; body: string; gaps: string[] };
+/** İstem sürümü: üretim meta verisine yazılır (hangi kurallarla üretildiği izlenebilsin). */
+export const PROMPT_VERSION = { section: "section-v2", page: "page-v2" } as const;
 
-export function aiSection(c: SectionContext, model: string) {
-  return parse(sectionSchema, [
+export type SectionContext = {
+  path: string; query: string | null; h1: string; headings: string[]; body: string; gaps: string[];
+  intent?: string; angle?: string; cta?: string;
+  avoidHeadings?: string[]; // benzer sayfalardaki başlıklar (aynı iskeleti tekrar etme)
+  links?: { path: string; title: string }[]; // kullanılabilecek iç linkler (yayındaki sayfalar)
+};
+
+export async function aiSection(c: SectionContext, model: string) {
+  const out = await parse(sectionSchema, [
     "Bu sayfaya, arama niyetini daha iyi karşılayan TEK bir yeni bölüm ekle.",
     "- Bölüm, sayfada zaten bulunan bilgileri bu arama niyetine göre açıklayıp düzenlesin; yeni olgu ekleme.",
-    "- Mevcut başlıkları tekrar etme. 80-250 kelime. Liste kullanabilirsin.",
+    "- Mevcut başlıkları tekrar etme. 80-250 kelime. Liste kullanabilirsin. HTML kullanma; yalnızca Markdown.",
     "- Bilgi yetersizse kısa ve genel kal; asla uydurma.",
+    c.intent && `Arama niyeti: ${c.intent}. Bölüm bu niyete hizmet etsin (bilgi arayana açıklama, hizmet arayana kapsam/süreç, teklif isteyene sonraki adım).`,
+    c.angle && `Anlatım açısı: ${c.angle}. Diğer sayfalardaki kalıp cümleleri kullanma.`,
+    c.cta && `Bölüm doğal bir sonraki adımla bitebilir (örnek yön: "${c.cta}"); satış baskısı yapma.`,
+    c.links?.length ? `İstersen en çok 1 iç link ver; yalnızca bu listeden:\n${c.links.slice(0, 20).map((l) => `- ${l.title}: ${l.path}`).join("\n")}` : "İç veya dış link verme.",
+    c.avoidHeadings?.length ? `Benzer sayfalarda kullanılmış başlıklar (aynısını veya çok benzerini kullanma):\n${c.avoidHeadings.slice(0, 30).join("\n")}` : null,
     `URL: ${c.path}`, `Odak sorgu: ${c.query ?? "(yok)"}`, `H1: ${c.h1}`,
     `Mevcut başlıklar:\n${c.headings.join("\n") || "(yok)"}`,
     `Eksik görülen noktalar:\n${c.gaps.join("\n") || "(yok)"}`,
     `Sayfa metni:\n${c.body.slice(0, 12000)}`,
-  ].join("\n"), model, 12000);
+  ].filter(Boolean).join("\n"), model, 12000);
+  return sanitizeDeep(out);
 }
 
 export const pageSchema = z.object({
@@ -85,7 +100,10 @@ export const pageSchema = z.object({
 export type AiPage = z.infer<typeof pageSchema>;
 
 export type PageContext = {
-  kind: "BLOG_POST" | "LOCATION";
+  kind: "BLOG_POST" | "LOCATION" | "SERVICE";
+  angle?: string; // anlatım açısı (strategy.ts)
+  cta?: string;
+  avoidHeadings?: string[];
   primary: string;
   queries: string[];
   intent: string;
@@ -95,11 +113,17 @@ export type PageContext = {
   existingTitles: string[]; // kopya olmaması için
 };
 
-export function aiPage(c: PageContext, model: string) {
-  return parse(pageSchema, [
+export async function aiPage(c: PageContext, model: string) {
+  const out = await parse(pageSchema, [
     c.kind === "LOCATION"
-      ? "Bu konumdaki işletmeler için web tasarım hizmet sayfasının içeriğini yaz."
-      : "Aşağıdaki gerçek arama sorgularına yanıt veren tek bir rehber yazısı yaz (her sorgu için ayrı sayfa değil; hepsini tek, güçlü bir yazıda karşıla).",
+      ? "Bu konumdaki işletmeler için web tasarım hizmet sayfasının içeriğini yaz. Şehir/ilçe adını değiştirince başka sayfaya dönüşecek şablon metin YAZMA; yalnızca verilen yerel olgulara dayan."
+      : c.kind === "SERVICE"
+        ? "Bu hizmet için ticari niyetli bir hizmet sayfası yaz: hizmet neyi çözer, kimler için uygun, kapsam/iş kalemleri, süreç, sık sorulan sorular. Fiyat, süre garantisi, müşteri sayısı yazma."
+        : "Aşağıdaki gerçek arama sorgularına yanıt veren tek bir rehber yazısı yaz (her sorgu için ayrı sayfa değil; hepsini tek, güçlü bir yazıda karşıla).",
+    c.angle && `Anlatım açısı ve yapı: ${c.angle}`,
+    c.cta && `Sayfa sonundaki çağrı yönü: "${c.cta}" (kendi cümlelerinle)`,
+    c.avoidHeadings?.length ? `Benzer sayfalardaki başlıklar (aynı iskeleti ve başlıkları tekrar etme):\n${c.avoidHeadings.slice(0, 40).join("\n")}` : null,
+    "- HTML kullanma; yalnızca Markdown.",
     "Kesin kurallar:",
     "- Yalnızca 'Doğrulanmış olgular' ve genel, herkesçe bilinen web tasarım bilgisini kullan. Müşteri, proje, referans, yorum, fiyat, istatistik, süre garantisi, sıralama iddiası, ödül, yerel işletme/mekân adı UYDURMA.",
     "- Bilmediğin ama gerekli bir bilgi varsa metne yazma; verifyNotes'a ekle. Metinde [DOĞRULANMALI] işareti kullanabilirsin ama bu sayfanın otomatik yayınlanmasını engeller.",
@@ -113,5 +137,6 @@ export function aiPage(c: PageContext, model: string) {
     `Doğrulanmış olgular:\n${c.facts.map((f) => `- ${f}`).join("\n") || "(yok)"}`,
     `Kullanılabilecek iç linkler:\n${c.links.map((l) => `- ${l.title}: ${l.path}`).join("\n")}`,
     `Mevcut sayfa başlıkları (kopyalama):\n${c.existingTitles.slice(0, 60).join("\n")}`,
-  ].join("\n"), model, 16000);
+  ].filter(Boolean).join("\n"), model, 16000);
+  return sanitizeDeep(out);
 }

@@ -460,6 +460,44 @@ await step("48 saat dolunca (test saati) zamanlayıcı işi öneriyi otomatik uy
   }
 });
 
+await step("İçerik önerisi → Şimdi Uygula → yeni bölüm gerçek HTML'de; canonical/sitemap bozulmaz → Rollback", async () => {
+  const { default: pg } = await import("pg");
+  const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await c.connect();
+  const path = "/otel-web-tasarimi";
+  const heading = `Rezervasyon adımlarının sadeleştirilmesi ${stamp}`;
+  try {
+    const p = (await c.query('select id, body from "Page" where path=$1', [path])).rows[0];
+    const after = `${p.body.trimEnd()}\n\n## ${heading}\n\nOtel sitesinde ziyaretçi oda seçiminden rezervasyon talebine kadar az adımda ilerlemelidir. Tarih, oda tipi ve iletişim bilgisi aynı ekranda istenir; zorunlu olmayan alanlar kaldırılır. Mobilde form alanları büyük ve okunaklı olur, hata mesajları alanın hemen altında gösterilir.`;
+    const id = `e2econtent${stamp}`;
+    await c.query(`insert into "AutopilotAction" (id, type, risk, status, score, title, reason, "pageId", category, source, "riskLevel", "autoApply", "expiresAt", fingerprint, "proposedChanges", "createdAt")
+      values ($1, 'CONTENT', 'CONTROLLED', 'pending_approval', 40, $2, 'E2E içerik testi', $3, 'CONTENT', 'content', 'MEDIUM', true, (now() at time zone 'utc') + interval '48 hours', $1, $4, now() at time zone 'utc')`,
+      [id, `${path} içerik yenileme (E2E)`, p.id, JSON.stringify({ pages: [{ pageId: p.id, path, changes: [{ field: "body", before: p.body, after }] }] })]);
+    await page.goto(`/yonetim/oneriler/${id}`);
+    assert.match(await page.locator("#degisiklikler").innerText(), /Eklenecek bölüm/);
+    await Promise.all([page.waitForURL(/ok=/), page.click('button:text-is("Şimdi Uygula")')]);
+    await page.waitForSelector("text=sürüm geçmişine ve denetim loguna yazıldı");
+    const pub = await (await html(path)).text();
+    assert.ok(pub.includes(heading), "yeni bölüm sitede yok");
+    assert.match(pub, new RegExp(`<link rel="canonical" href="[^"]*${path}"`));
+    assert.match(await page.locator("[data-steps]").innerText(), /Tarama kontrolü[\s\S]*yeni bölüm görünüyor/);
+    await Promise.all([page.waitForURL(/ok=/), page.click('button:has-text("Rollback")')]);
+    await page.waitForSelector("text=Geri alındı");
+    assert.ok(!(await (await html(path)).text()).includes(heading), "geri alma sonrası bölüm sitede");
+  } finally {
+    await c.end();
+  }
+});
+
+await step("İçerik Planı: veriye dayalı bütçe, hizmet kararları, ilçe önceliği (doğrulanamayan kriter ayrı)", async () => {
+  await page.goto("/yonetim/icerik-plani");
+  await page.waitForSelector("text=Bütçe nasıl hesaplandı");
+  assert.match(await page.locator('[data-service="/seo-hizmeti"]').innerText(), /Mevcut sayfa karşılıyor/);
+  assert.match(await page.locator('[data-service="/teknik-seo"]').innerText(), /genişletilmeli/);
+  assert.equal(await page.locator("[data-district]").count(), 30);
+  assert.ok((await page.content()).includes("doğrulanamadı"));
+});
+
 await step("Reddedilen öneri uygulanmaz", async () => {
   await page.goto("/yonetim/oneriler");
   const card = page.locator("article[data-status=pending_approval]").first();

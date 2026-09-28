@@ -2,7 +2,7 @@ import "server-only";
 import { db } from "../db";
 import { runFullAnalysis } from "../seo/analyzer";
 
-export const JOB_KINDS = ["analyze", "opportunities", "crawl", "gsc-sync", "rank-update", "index-inspect", "indexnow", "sitemap-check", "daily", "autopilot", "alarms", "weekly-email", "daily-email", "auto-apply-proposals"] as const;
+export const JOB_KINDS = ["analyze", "opportunities", "crawl", "gsc-sync", "rank-update", "index-inspect", "indexnow", "sitemap-check", "daily", "autopilot", "alarms", "weekly-email", "daily-email", "auto-apply-proposals", "content-opportunity-scan", "service-page-opportunity", "local-seo-opportunity"] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
 export type JobResult = { id: string; kind: JobKind; status: "ok" | "error" | "skipped"; message: string; stats?: unknown };
@@ -86,7 +86,11 @@ export async function recoverStaleJobs(now = new Date()): Promise<number> {
 
 /** Sıradaki uygun işi atomik olarak sahiplenir (iki worker aynı işi alamaz). */
 /** Sıra bağımlılıkları: ajan veri hattı bitmeden, raporlar ajan bitmeden başlamaz. */
-export const DEPENDS_ON: Partial<Record<JobKind, JobKind[]>> = { autopilot: ["daily", "gsc-sync", "crawl"], "daily-email": ["daily", "autopilot"], "weekly-email": ["daily", "autopilot"] };
+export const DEPENDS_ON: Partial<Record<JobKind, JobKind[]>> = {
+  autopilot: ["daily", "gsc-sync", "crawl"], "daily-email": ["daily", "autopilot"], "weekly-email": ["daily", "autopilot"],
+  // İçerik işleri güncel analizden sonra ve otopilotla aynı anda çalışmaz (aynı sayfaya iki öneri üretilmesin)
+  "content-opportunity-scan": ["daily", "autopilot"], "service-page-opportunity": ["daily", "autopilot", "content-opportunity-scan"], "local-seo-opportunity": ["daily", "autopilot", "content-opportunity-scan", "service-page-opportunity"],
+};
 
 async function claimNext(now: Date) {
   const queued = await db.jobRun.findMany({ where: { status: "queued", OR: [{ runAfter: null }, { runAfter: { lte: now } }] }, orderBy: { startedAt: "asc" }, take: 20 });

@@ -24,6 +24,11 @@ import { notifyAppRevalidate } from "../jobs/notify";
 import { AUTOPILOT_USER, prepareAction, rollbackAction, type ExecOutcome, type FieldChange, type ProposedChanges } from "../autopilot/execute";
 import { newPageGate, publishNewPage, rollbackNewPage } from "../autopilot/new-page";
 import { startExperiment } from "../autopilot/experiments";
+import { getSettingsFresh } from "../settings";
+import { siteUrl } from "../env";
+import { extractMarkdown } from "../text/markdown";
+import { wordCount } from "../text/analyze";
+import { unsafeMarkup } from "../content/sanitize";
 import { AUTO_APPLY_TYPES, FORBIDDEN_FIELDS, autoApplyBlocker, expiryFor, fingerprintOf, hasChanges, riskLevelFor, type Category } from "./policy";
 
 /** Test edilebilir saat: testler `clock.now`'u değiştirerek 48 saati simüle eder. */
@@ -126,6 +131,13 @@ async function finalizePrepared(id: string, p: NewProposal, r: ExecOutcome, wind
 
 // ─── Uygulama hattı ──────────────────────────────────────────────────────────
 
+type PageQuality = { score: number; schemaErrors: number; noindex: boolean; similar: number; similarPath: string | null; stuffing: string; length: string };
+
+function qualityOf(an: NonNullable<Awaited<ReturnType<typeof analyzeUnsaved>>>, noindex: boolean): PageQuality {
+  const check = (id: string) => an.seo.checks.find((c) => c.id === id)?.status ?? "NA";
+  return { score: an.seo.score, schemaErrors: an.schemaIssues.filter((i) => i.level === "error").length, noindex, similar: an.similar.score, similarPath: an.similar.path, stuffing: check("stuffing"), length: check("length") };
+}
+
 class PipelineError extends Error {
   constructor(message: string, readonly retryable: boolean) {
     super(message);
@@ -183,6 +195,7 @@ export async function applyProposal(id: string, opts: { via: Via; user?: Session
   const changes = a.proposedChanges as ProposedChanges | null;
   const before: { pageId: string; path: string; snapshot: Record<string, unknown> }[] = [];
   let mutated = false;
+  const expected = new Map<string, unknown>();
   try {
     // 2) Doğrulama
     if (!hasChanges(changes)) throw new PipelineError("Uygulanacak somut değişiklik yok", false);
@@ -197,6 +210,13 @@ export async function applyProposal(id: string, opts: { via: Via; user?: Session
       const t = typeof c.after === "string" ? c.after : JSON.stringify(c.after ?? "");
       if (UNVERIFIED_RE.test(t)) throw new PipelineError(`“${c.field}” doğrulanmamış bilgi ([DOĞRULANMALI]) içeriyor`, false);
       if (PLACEHOLDER_RE.test(t)) throw new PipelineError(`“${c.field}” yer tutucu metin içeriyor`, false);
+      const unsafe = unsafeMarkup(t);
+      if (unsafe.length && c.field !== "relatedLinks") throw new PipelineError(`“${c.field}” güvenli olmayan içerik barındırıyor (${unsafe.join(", ")})`, false);
+      // Mevcut içerik silinip yerine kontrolsüz metin konamaz: gövde en çok %10 kısalabilir
+      if (c.field === "body" && typeof c.before === "string" && c.before.trim()) {
+        const b = wordCount(c.before), n = wordCount(typeof c.after === "string" ? c.after : "");
+        if (n < b * 0.9) throw new PipelineError(`Gövde ${b} → ${n} kelimeye kısalıyor; mevcut içerik silinemez`, false);
+      }
     }
     for (const set of changes.pages) {
       const pg = await db.page.findUnique({ where: { id: set.pageId } });
@@ -212,12 +232,12 @@ export async function applyProposal(id: string, opts: { via: Via; user?: Session
     step("validation", "ok", `${all.length} alan değişikliği doğrulandı (tür, risk, yasak alan, doğrulanmamış bilgi, eskime)`);
 
     // 3) Anlık görüntü (geri alma noktası)
-    const pre = new Map<string, { score: number; schemaErrors: number; noindex: boolean }>();
+    const pre = new Map<string, PageQuality>();
     for (const set of changes.pages) {
       const pg = await db.page.findUniqueOrThrow({ where: { id: set.pageId } });
       before.push({ pageId: pg.id, path: pg.path, snapshot: snapshotOf(pg as unknown as Record<string, unknown>) });
       const an = await analyzeUnsaved(pg.id, {});
-      if (an) pre.set(pg.id, { score: an.seo.score, schemaErrors: an.schemaIssues.filter((i) => i.level === "error").length, noindex: pg.autoNoindex });
+      if (an) pre.set(pg.id, qualityOf(an, pg.autoNoindex));
     }
     const versionBefore = await db.pageVersion.findFirst({ where: { pageId: changes.pages[0].pageId }, orderBy: { version: "desc" }, select: { id: true } });
     step("snapshot", "ok", `${before.length} sayfanın tam anlık görüntüsü alındı`);
@@ -240,8 +260,14 @@ export async function applyProposal(id: string, opts: { via: Via; user?: Session
         const pg = await db.page.findUniqueOrThrow({ where: { id: set.pageId } });
         const patch: Record<string, unknown> = {};
         for (const c of set.changes) patch[c.field] = c.field === "relatedLinks" ? mergeLinks(pg.relatedLinks, c.before, c.after) : c.after;
+        const input = await inputWith(set.pageId, patch as Partial<PageInput>);
+        // Test adımı, savePage'e giden normalize değerle karşılaştırır (ör. kırpılmış metin)
+        for (const c of set.changes) expected.set(`${set.pageId}:${c.field}`, input[c.field as keyof PageInput]);
         mutated = true;
-        const r = await savePage(user, set.pageId, await inputWith(set.pageId, patch as Partial<PageInput>), `Öneri uygulandı (${VIA_LABELS[opts.via]}): ${a.title}`.slice(0, 300));
+        // Kayıt otopilot adına: onaylanan öneri "elle düzenleme" sayılmaz (30 günlük koruma tetiklenmez);
+        // onaylayan kişi sürüm notunda ve decidedBy alanında
+        const who = opts.via === "manual" ? `, onaylayan: ${user.name}` : "";
+        const r = await savePage(AUTOPILOT_USER, set.pageId, input, `Öneri uygulandı (${VIA_LABELS[opts.via]}${who}): ${a.title}`.slice(0, 300));
         if (!r.ok) throw new PipelineError(r.error, false);
         if (!r.changed.length) throw new PipelineError("Değişiklik oluşmadı (değerler zaten aynı)", false);
         changedPaths.push(set.path);
@@ -253,26 +279,34 @@ export async function applyProposal(id: string, opts: { via: Via; user?: Session
     for (const set of changes.pages) {
       const cur = snapshotOf((await db.page.findUniqueOrThrow({ where: { id: set.pageId } })) as unknown as Record<string, unknown>);
       for (const c of set.changes) {
+        const want = expected.has(`${set.pageId}:${c.field}`) ? expected.get(`${set.pageId}:${c.field}`) : c.after;
         const ok = c.field === "relatedLinks"
           ? ((c.after as Link[] | null) ?? []).every((l) => ((cur.relatedLinks as Link[] | null) ?? []).some((x) => x.path === l.path))
-          : !diffFields({ [c.field]: cur[c.field] ?? null }, { [c.field]: c.after ?? null }).length;
+          : !diffFields({ [c.field]: cur[c.field] ?? null }, { [c.field]: want ?? null }).length;
         if (!ok) throw new PipelineError(`Doğrulama: ${set.path} “${c.field}” veritabanında beklenen değerde değil`, true);
       }
     }
     step("test", "ok", "Veritabanındaki değerler öneriyle birebir aynı");
 
-    // 6) SEO doğrulama: schema hatası, skor düşüşü, istenmeyen NOINDEX
+    // 6) SEO doğrulama: schema, skor, NOINDEX, kopya içerik, keyword stuffing, thin content
+    const threshold = (await getSettingsFresh()).seo.duplicateThreshold;
     for (const set of changes.pages) {
       const an = await analyzeAndStore(set.pageId);
       const p0 = pre.get(set.pageId);
       if (!an || !p0) continue;
-      const errs = an.schemaIssues.filter((i) => i.level === "error").length;
       const pg = await db.page.findUniqueOrThrow({ where: { id: set.pageId }, select: { autoNoindex: true, status: true } });
-      if (errs > p0.schemaErrors) throw new PipelineError(`SEO doğrulama: ${set.path} yeni schema hatası (${errs - p0.schemaErrors})`, false);
-      if (an.seo.score < p0.score - 10) throw new PipelineError(`SEO doğrulama: ${set.path} SEO skoru ${p0.score} → ${an.seo.score} düştü`, false);
-      if (pg.status === "PUBLISHED" && pg.autoNoindex && !p0.noindex) throw new PipelineError(`SEO doğrulama: ${set.path} otomatik NOINDEX'e düştü`, false);
+      const q = qualityOf(an, pg.autoNoindex);
+      const problems = [
+        q.schemaErrors > p0.schemaErrors && `yeni schema hatası (${q.schemaErrors - p0.schemaErrors})`,
+        q.score < p0.score - 10 && `SEO skoru ${p0.score} → ${q.score} düştü`,
+        pg.status === "PUBLISHED" && q.noindex && !p0.noindex && "otomatik NOINDEX'e düştü",
+        q.similar >= threshold && p0.similar < threshold && `kopya içerik: ${q.similarPath} ile %${Math.round(q.similar * 100)} benzer`,
+        q.stuffing === "FAIL" && p0.stuffing !== "FAIL" && "keyword stuffing (ana kelime yoğunluğu %3,5'in üzerinde)",
+        q.length === "FAIL" && p0.length !== "FAIL" && "thin content",
+      ].filter(Boolean);
+      if (problems.length) throw new PipelineError(`SEO doğrulama: ${set.path} — ${problems.join("; ")}`, false);
     }
-    step("seo", "ok", "Schema hatası artmadı, SEO skoru düşmedi, indekslenebilirlik korundu");
+    step("seo", "ok", "Schema hatası artmadı, skor düşmedi, indekslenebilir; kopya/stuffing/thin content yok");
 
     // 7) Tarama kontrolü: yayındaki sayfa 200 dönüyor ve yeni değer HTML'de
     refreshPublic(changedPaths);
@@ -296,7 +330,13 @@ export async function applyProposal(id: string, opts: { via: Via; user?: Session
         ...(single && a.type !== "NEW_PAGE" ? { before: { field: single.field, value: single.before ?? null } as object, after: { field: single.field, value: single.after ?? null } as object } : {}),
       },
     });
-    await db.auditLog.create({ data: { userId: opts.via === "manual" && user.id !== AUTOPILOT_USER.id ? user.id : null, action: opts.via === "auto_48h" ? "proposal.auto_apply" : "proposal.apply", entity: "autopilotAction", entityId: id, detail: { via: opts.via, type: a.type, paths: changedPaths } } });
+    const generation = (a.proposal as { generation?: unknown } | null)?.generation ?? null;
+    await db.auditLog.create({
+      data: {
+        userId: opts.via === "manual" && user.id !== AUTOPILOT_USER.id ? user.id : null, action: opts.via === "auto_48h" ? "proposal.auto_apply" : "proposal.apply", entity: "autopilotAction", entityId: id,
+        detail: { proposalId: id, via: opts.via, type: a.type, paths: changedPaths, generation, versionBeforeId: versionBefore?.id ?? null, versionAfterId: versionAfter?.id ?? null, validation: log.map((s) => `${s.step}:${s.status}`) } as object,
+      },
+    });
     // Deney: etkisi ölçülecek sayfa (iç linkte hedef sayfa)
     if (a.type !== "NEW_PAGE" && a.type !== "BROKEN_LINK") {
       const target = a.type === "INTERNAL_LINK" ? String(((a.proposal as { payload?: { target?: string } }).payload ?? {}).target ?? "") : null;
@@ -311,7 +351,7 @@ export async function applyProposal(id: string, opts: { via: Via; user?: Session
     step("error", "fail", err.message);
     if (mutated) {
       try {
-        await revert(a, before, user);
+        await revert(a, before, AUTOPILOT_USER);
         step("auto_rollback", "ok", "Sayfa uygulama öncesi hâline döndürüldü");
       } catch (re) {
         step("auto_rollback", "fail", `Otomatik geri alma başarısız: ${re instanceof Error ? re.message : String(re)} — sürüm geçmişinden kontrol edin`);
@@ -340,8 +380,14 @@ async function crawlCheck(changes: ProposedChanges, f: typeof fetch | null): Pro
     if (!pg || pg.status !== "PUBLISHED") continue;
     const expectTitle = set.changes.some((c) => c.field === "seoTitle") ? resolveTitle(pg, st.settings.seo) : null;
     const expectLinks = set.changes.filter((c) => c.field === "relatedLinks").flatMap((c) => ((c.after as Link[] | null) ?? []).filter((l) => !((c.before as Link[] | null) ?? []).some((x) => x.path === l.path)).map((l) => l.path));
+    // Gövdeye eklenen bölüm: yeni başlıkların metni sayfada görünmeli
+    const bodyChange = set.changes.find((c) => c.field === "body");
+    const oldHeads = new Set(extractMarkdown(typeof bodyChange?.before === "string" ? bodyChange.before : "").headings.map((h) => h.text));
+    const expectHeadings = bodyChange ? extractMarkdown(String(bodyChange.after ?? "")).headings.map((h) => h.text).filter((t) => !oldHeads.has(t)) : [];
+    const published = set.changes.some((c) => c.field === "status" && c.after === "PUBLISHED");
     let last = "";
     let passed = false;
+    let html = "";
     for (let i = 0; i < 3 && !passed; i++) {
       if (i) await new Promise((r) => setTimeout(r, 1000));
       let res;
@@ -350,19 +396,53 @@ async function crawlCheck(changes: ProposedChanges, f: typeof fetch | null): Pro
       } catch (e) {
         return ["not_verifiable", `Site yanıt vermedi (${e instanceof Error ? e.message : e}); tarama kontrolü doğrulanamadı`];
       }
-      const html = decodeHtml(res.body ?? "");
+      html = decodeHtml(res.body ?? "");
+      const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
       const problems = [
         res.status !== 200 && `HTTP ${res.status}`,
         expectTitle && !html.includes(`<title>${expectTitle}</title>`) && "yeni title HTML'de yok",
         ...expectLinks.filter((l) => !html.includes(`href="${l}"`)).map((l) => `${l} linki HTML'de yok`),
+        ...expectHeadings.filter((h) => !text.includes(h)).map((h) => `eklenen bölüm (“${h}”) HTML'de yok`),
+        published && pg.h1 && !text.includes(pg.h1) && "H1 HTML'de yok",
       ].filter(Boolean) as string[];
       passed = problems.length === 0;
       last = problems.join(", ");
     }
     if (!passed) throw new PipelineError(`Tarama kontrolü: ${set.path} — ${last}`, true);
-    notes.push(`${set.path} 200${expectTitle ? ", title doğru" : ""}${expectLinks.length ? ", link görünüyor" : ""}`);
+    const extra: string[] = [];
+    if (published) extra.push(...(await publishChecks(html, set.path, f)));
+    notes.push(`${set.path} 200${expectTitle ? ", title doğru" : ""}${expectLinks.length ? ", link görünüyor" : ""}${expectHeadings.length ? ", yeni bölüm görünüyor" : ""}${extra.length ? `, ${extra.join(", ")}` : ""}`);
   }
   return notes.length ? ["ok", notes.join("; ")] : ["skipped", "Yayında olan etkilenen sayfa yok"];
+}
+
+/** Yeni yayınlanan sayfa: canonical kendisi, JSON-LD ayrıştırılabilir, sitemap'te var. */
+async function publishChecks(html: string, path: string, f: typeof fetch): Promise<string[]> {
+  const canon = /<link rel="canonical" href="([^"]*)"/.exec(html)?.[1];
+  let canonPath: string | null = null;
+  try {
+    canonPath = canon ? new URL(canon).pathname.replace(/\/$/, "") || "/" : null;
+  } catch { /* geçersiz canonical */ }
+  if (canonPath !== path) throw new PipelineError(`Tarama kontrolü: ${path} — canonical kendisi değil (${canon ?? "yok"})`, false);
+  const blocks = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  if (!blocks.length) throw new PipelineError(`Tarama kontrolü: ${path} — yapılandırılmış veri (JSON-LD) yok`, false);
+  for (const b of blocks) {
+    try {
+      JSON.parse(b);
+    } catch {
+      throw new PipelineError(`Tarama kontrolü: ${path} — JSON-LD ayrıştırılamıyor`, false);
+    }
+  }
+  // Sitemap: dizin → alt sitemap'ler (kanonik alan adı iç adrese çevrilerek okunur)
+  const toInternal = (u: string) => u.replace(siteUrl(), internalBase());
+  const read = async (u: string) => {
+    const r = await f(toInternal(u));
+    return r.ok ? [...(await r.text()).matchAll(/<loc>(.*?)<\/loc>/g)].map((m) => m[1]) : [];
+  };
+  const index = await read(`${siteUrl()}/sitemap.xml`);
+  const urls = (await Promise.all(index.filter((u) => u.endsWith(".xml")).map(read))).flat();
+  if (!urls.some((u) => u.replace(/\/$/, "") === `${siteUrl()}${path}`)) throw new PipelineError(`Tarama kontrolü: ${path} sitemap'te yok`, true);
+  return ["canonical kendisi", `JSON-LD geçerli (${blocks.length})`, "sitemap'te"];
 }
 
 /** Uygulama sonrası adım başarısızsa sayfaları tam anlık görüntüye döndürür. */
@@ -386,6 +466,18 @@ export async function rejectProposal(user: SessionUser, id: string) {
     data: { status: "rejected", rejectedAt: clock.now(), decidedBy: user.name, autoApply: false, qualityNotes: `Reddedildi (${user.name})` },
   });
   if (r.count !== 1) throw new Error("Bu öneri reddedilebilir durumda değil");
+  // Yeni sayfa hazırlığında üst sayfaya eklenen (taslağa işaret ettiği için görünmeyen) link temizlenir
+  const a = await db.autopilotAction.findUniqueOrThrow({ where: { id } });
+  const prop = (a.proposal ?? {}) as { parentPath?: string | null; pagePath?: string };
+  if (a.type === "NEW_PAGE" && prop.parentPath && prop.pagePath) {
+    const parent = await db.page.findUnique({ where: { path: prop.parentPath } });
+    const rel = (parent?.relatedLinks as Link[] | null) ?? [];
+    const draft = await db.page.findUnique({ where: { path: prop.pagePath }, select: { status: true } });
+    if (parent && draft?.status !== "PUBLISHED" && rel.some((l) => l.path === prop.pagePath)) {
+      const rest = rel.filter((l) => l.path !== prop.pagePath);
+      await savePage(AUTOPILOT_USER, parent.id, await inputWith(parent.id, { relatedLinks: rest.length ? rest : null }), `Reddedilen yeni sayfa önerisinin iç linki kaldırıldı (${prop.pagePath})`);
+    }
+  }
   await db.auditLog.create({ data: { userId: user.id === AUTOPILOT_USER.id ? null : user.id, action: "proposal.reject", entity: "autopilotAction", entityId: id } });
 }
 
