@@ -245,7 +245,9 @@ async function execContent(a: Action, model: string, allowControlled: boolean): 
   const intent = classifyIntent(page.primaryKeyword ?? a.query ?? page.name, { hasLocation: LOCATION_TYPES.has(page.type) }).primary;
   const angle = angleFor(page.path, LOCATION_TYPES.has(page.type) ? "LOCAL" : intent);
   const published = await db.page.findMany({ where: { status: "PUBLISHED", robotsIndex: true, autoNoindex: false, id: { not: page.id } }, select: { path: true, h1: true, name: true, type: true, body: true, primaryKeyword: true } });
-  const avoidHeadings = published.filter((p) => p.type === page.type).flatMap((p) => extractMarkdown(p.body).headings.map((h) => h.text));
+  // Rakip başlıkları yalnızca "kopyalama" listesidir (konu sinyali; metin alınmaz)
+  const competitorHeadings = ((a.proposal as { competitorHeadings?: string[] } | null)?.competitorHeadings ?? []).slice(0, 30);
+  const avoidHeadings = [...published.filter((p) => p.type === page.type).flatMap((p) => extractMarkdown(p.body).headings.map((h) => h.text)), ...competitorHeadings];
   const links = published.filter((p) => p.type !== "STATIC").map((p) => ({ path: p.path, title: p.h1 ?? p.name }));
   let section: { heading: string; markdown: string };
   try {
@@ -268,6 +270,7 @@ async function execContent(a: Action, model: string, allowControlled: boolean): 
   const own = page.primaryKeyword ? trLower(page.primaryKeyword) : null;
   const rival = published.find((p) => p.primaryKeyword && trLower(p.primaryKeyword) !== own && containsPhrase(section.heading, p.primaryKeyword));
   if (rival) qc.problems.push(`Cannibalization: bölüm başlığı ${rival.path} sayfasının hedef kelimesini (“${rival.primaryKeyword}”) hedefliyor`);
+  if (competitorHeadings.some((h) => trLower(h.trim()) === trLower(section.heading.trim()))) qc.problems.push("Bölüm başlığı bir rakip sayfasının başlığıyla aynı (kopya yasak)");
   qc.ok = qc.problems.length === 0;
   await db.autopilotAction.update({ where: { id: a.id }, data: { proposal: { ...(a.proposal as object), section, qc, generation } as object, qualityNotes: qc.problems.join("; ") || null } });
   if (md.headings.some((h) => trLower(h.text) === trLower(section.heading))) return { status: "skipped", note: "Önerilen başlık sayfada zaten var" };

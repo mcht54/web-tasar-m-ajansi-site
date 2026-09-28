@@ -543,12 +543,72 @@ model SeoTask {
 // ─── Rakip analizi ───────────────────────────────────────────────────────────
 
 model Competitor {
-  id        String               @id @default(cuid())
-  domain    String               @unique
-  name      String?
-  notes     String?
-  createdAt DateTime             @default(now())
-  snapshots CompetitorSnapshot[]
+  id          String               @id @default(cuid())
+  domain      String               @unique
+  name        String?
+  notes       String?
+  createdAt   DateTime             @default(now())
+  // Tarama durumu (yalnızca gözlenen veri)
+  status      String               @default("active") // active | paused | error
+  source      String               @default("manual") // manual | serp | keyword
+  lastCrawlAt DateTime?
+  lastStatus  Int? // ana sayfa HTTP durumu
+  lastError   String?
+  snapshots   CompetitorSnapshot[] // tarama kayıtları (özet + istatistik)
+  pages       CompetitorPage[]
+  changes     CompetitorChange[]
+}
+
+// Rakip sayfa önbelleği: URL başına son gözlem. Önceki taramayla fark bu tablodan çıkar.
+model CompetitorPage {
+  id            String     @id @default(cuid())
+  competitorId  String
+  competitor    Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  url           String
+  path          String
+  status        Int
+  finalUrl      String?
+  title         String?
+  metaDescription String?
+  canonical     String?
+  robotsMeta    String?
+  h1            String[]
+  h2            String[]
+  wordCount     Int        @default(0)
+  contentHash   String?
+  schemaTypes   String[]
+  internalLinks Int        @default(0)
+  links         String[] // site içi bağlantı yolları (önbellekten gezinme için)
+  imagesNoAlt   Int        @default(0)
+  images        Int        @default(0)
+  inSitemap     Boolean    @default(false)
+  depth         Int        @default(0)
+  category      String? // çıkarım: home | service | sector | location | blog | about | contact | other
+  topics        String[] // çıkarım: hizmet kataloğu eşleşmeleri
+  etag          String?
+  lastModified  String?
+  firstSeenAt   DateTime   @default(now())
+  lastSeenAt    DateTime   @default(now())
+  fetchedAt     DateTime   @default(now())
+  removedAt     DateTime?
+
+  @@unique([competitorId, url])
+  @@index([competitorId, category])
+}
+
+// Rakip değişiklik geçmişi (iki tarama arası; yalnızca gözlenen farklar)
+model CompetitorChange {
+  id           String     @id @default(cuid())
+  competitorId String
+  competitor   Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  snapshotId   String?
+  kind         String // NEW_PAGE | REMOVED_PAGE | URL_CHANGE | TITLE | H1 | LENGTH | SCHEMA | NEW_SERVICE | NEW_LOCATION
+  url          String
+  before       String?
+  after        String?
+  createdAt    DateTime   @default(now())
+
+  @@index([competitorId, createdAt])
 }
 
 model CompetitorSnapshot {

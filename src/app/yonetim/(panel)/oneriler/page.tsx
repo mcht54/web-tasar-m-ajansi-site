@@ -68,7 +68,7 @@ export default async function Proposals(props: PageProps<"/yonetim/oneriler">) {
 }
 
 function ProposalCard({ a, now, back }: { a: Row; now: Date; back: string }) {
-  const prop = (a.proposal ?? {}) as { evidence?: string; recommendedAction?: string; pagePath?: string };
+  const prop = (a.proposal ?? {}) as { evidence?: string; recommendedAction?: string; pagePath?: string; findingType?: string };
   const views = describeChanges(a.proposedChanges);
   const blocker = a.status === "pending_approval" ? autoApplyBlocker(a) : null;
   const expired = a.expiresAt ? a.expiresAt.getTime() <= now.getTime() : false;
@@ -101,6 +101,7 @@ function ProposalCard({ a, now, back }: { a: Row; now: Date; back: string }) {
           </div>
         </div>
         <dl className="mt-3 grid gap-x-6 gap-y-1.5 text-[13px] sm:grid-cols-[150px_1fr]">
+          {prop.findingType && <><dt className="text-muted">Rakipte var</dt><dd>{prop.evidence?.split(" · ")[0]}</dd><dt className="text-muted">Bizde</dt><dd>{prop.evidence?.split(" · ").slice(1).join(" · ")}</dd></>}
           <dt className="text-muted">Neden?</dt><dd>{a.reason}</dd>
           {prop.evidence && prop.evidence !== a.reason && <><dt className="text-muted">Fırsat</dt><dd>{prop.evidence}</dd></>}
           {views.length > 0 && <><dt className="text-muted">Mevcut durum</dt><dd className="whitespace-pre-wrap">{views.map((v) => `${v.path} · ${v.label}: ${v.before.slice(0, 220)}`).join("\n")}</dd></>}

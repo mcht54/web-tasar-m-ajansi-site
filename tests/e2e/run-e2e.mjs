@@ -498,6 +498,52 @@ await step("İçerik Planı: veriye dayalı bütçe, hizmet kararları, ilçe ö
   assert.ok((await page.content()).includes("doğrulanamadı"));
 });
 
+await step("Rakipler: alan adı doğrulama + SSRF reddi; tarama hatası dürüst; detay sekmeleri, fırsat kartı, GSC durumu, Kontrol Merkezi", async () => {
+  const { default: pg } = await import("pg");
+  const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await c.connect();
+  try {
+    await c.query(`delete from "Competitor" where domain like '%e2e%'`);
+    for (const bad of ["127.0.0.1", "localhost", "servis.internal"]) {
+      await page.goto("/yonetim/rakipler");
+      await page.fill('input[name="domain"]', bad);
+      await Promise.all([page.waitForURL(/hata=/), page.click('button:has-text("Ekle ve tara")')]);
+    }
+    await page.goto("/yonetim/rakipler");
+    assert.match(await page.locator("[data-gsc]").innerText(), /Bağlı değil/);
+    assert.match(await page.locator("[data-discovery]").innerText(), /SERP/);
+    await page.fill('input[name="domain"]', `https://www.rakip-e2e-${stamp}.example/hizmet`);
+    await Promise.all([page.waitForURL(/\/yonetim\/rakipler\/\w+\?basladi=1/), page.click('button:has-text("Ekle ve tara")')]);
+    const id = new URL(page.url()).pathname.split("/").pop();
+    assert.equal((await c.query('select domain from "Competitor" where id=$1', [id])).rows[0].domain, `rakip-e2e-${stamp}.example`);
+    // .example çözümlenmez: tarama hata olarak kaydedilmeli (sahte başarı yok)
+    let err = null;
+    for (let i = 0; i < 20 && !err; i++) { await new Promise((r) => setTimeout(r, 500)); err = (await c.query('select "lastError" from "Competitor" where id=$1', [id])).rows[0].lastError; }
+    assert.ok(err, "tarama hatası kaydedilmedi");
+    // Gözlenmiş rakip sayfaları (TEST veritabanı) → fırsat ve sekmeler
+    const ins = (path, cat, topics, h2, words) => c.query(`insert into "CompetitorPage" (id, "competitorId", url, path, status, title, h1, h2, "wordCount", "schemaTypes", links, category, topics) values ($1,$2,$3,$4,200,$5,$6,$7,$8,$9,'{}',$10,$11)`,
+      [`${id}${path.replace(/\W/g, "")}`, id, `https://rakip-e2e-${stamp}.example${path}`, path, `${path} başlık`, [`${path} h1`], h2, words, ["Service", "LocalBusiness"], cat, topics]);
+    await ins("/google-ads", "service", ["/google-ads-yonetimi"], ["Kurulum", "Ölçüm", "Bütçe", "Rapor", "Süreç", "SSS", "Strateji"], 1500);
+    await ins("/web-tasarim/sakarya", "location", [], [], 300);
+    await c.query(`update "Competitor" set "lastCrawlAt"=now() at time zone 'utc', "lastError"=null where id=$1`, [id]);
+    await page.goto(`/yonetim/rakipler/${id}`);
+    assert.ok(await page.locator('[data-finding="CONTENT_EXPANSION"]').count() > 0, "içerik genişletme fırsatı yok");
+    const card = await page.locator('[data-finding="CONTENT_EXPANSION"]').first().innerText();
+    for (const t of ["Rakipte var", "Bizde", "Neden önemli", "Kanıt", "Önerilen işlem", "Risk"]) assert.ok(card.includes(t), `kartta ${t} yok`);
+    assert.match(await page.locator('[data-finding="LOCAL_GAP"]').innerText(), /Uygulanmaz/);
+    for (const tab of ["teknik", "icerik", "hizmetler", "lokasyonlar", "kelimeler", "linkler", "degisiklik"]) {
+      await page.goto(`/yonetim/rakipler/${id}?sekme=${tab}`);
+      assert.equal(await page.locator("text=Application error").count(), 0, tab);
+    }
+    assert.match(await page.locator("main").innerText(), /doğrulanamaz|tahmin edilmez|Henüz değişiklik yok/);
+    await page.goto("/yonetim");
+    assert.ok(await page.locator("[data-competitor-section]").count(), "Kontrol Merkezi'nde rakip bölümü yok");
+    await c.query(`delete from "Competitor" where id=$1`, [id]);
+  } finally {
+    await c.end();
+  }
+});
+
 await step("Reddedilen öneri uygulanmaz", async () => {
   await page.goto("/yonetim/oneriler");
   const card = page.locator("article[data-status=pending_approval]").first();

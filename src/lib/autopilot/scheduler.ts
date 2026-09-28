@@ -59,6 +59,13 @@ export async function dueJobs(now = new Date()): Promise<JobKind[]> {
     await every("content-opportunity-scan", 20);
     await every("service-page-opportunity", 6.5 * 24);
     await every("local-seo-opportunity", 6.5 * 24);
+    // Rakip: tarama işi günde bir kontrol eder (her rakip haftada bir taranır); fırsat
+    // taraması tarama sonrasında kuyruğa girer, ayrıca haftalık yedek çalışma
+    if ((await db.competitor.count({ where: { status: { not: "paused" } } })) > 0) {
+      await every("competitor-crawl", 20);
+      await every("competitor-opportunity-scan", 6.5 * 24);
+    }
+    await every("competitor-discovery", 6.5 * 24);
   }
   // 48 saatlik onay: süresi dolan öneriler 15 dakikada bir kontrol edilir (panel kapalı olsa da)
   const autoApply = await lastOf("auto-apply-proposals");

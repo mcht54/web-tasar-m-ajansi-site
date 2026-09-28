@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { detectIssues, healthScore, parseHtml } from "@/lib/crawler/parse";
 import { checkRobotsRules, robotsMatch, buildRobotsTxt } from "@/lib/seo/robots";
-import { classifyUrls, normalizeDomain } from "@/lib/competitors/analyze";
+import { validateDomain } from "@/lib/competitors/net";
+import { categorize } from "@/lib/competitors/classify";
 
 const html = (o: { title?: string; h1?: string[]; canonical?: string; robots?: string; body?: string; links?: string[] }) => `<!doctype html><html><head>
 ${o.title ? `<title>${o.title}</title>` : ""}<meta name="viewport" content="width=device-width">
@@ -57,10 +58,14 @@ describe("robots.txt güvenlik kilidi", () => {
 
 describe("rakip analizi yardımcıları", () => {
   it("alan adını normalleştirir ve URL'leri sınıflandırır", () => {
-    expect(normalizeDomain("https://www.Ornek.com/abc")).toBe("ornek.com");
-    expect(() => normalizeDomain("olmaz")).toThrow();
-    const r = classifyUrls(["https://r.com/web-tasarim-sakarya", "https://r.com/blog/x", "https://r.com/kurumsal-web-tasarim", "https://r.com/hakkimizda"], ["sakarya", "ankara"]);
-    expect(r.cats).toEqual({ service: 1, city: 1, blog: 1, other: 1 });
-    expect(r.cities).toBe(1);
+    expect(validateDomain("https://www.Ornek.com/abc")).toBe("ornek.com");
+    expect(() => validateDomain("olmaz")).toThrow();
+    const places = { provinces: ["sakarya", "ankara"], districts: [] };
+    const cat = (p: string) => categorize(p, "", "", places, []);
+    expect(cat("/web-tasarim-sakarya").category).toBe("location");
+    expect(cat("/web-tasarim-sakarya").places.provinces).toEqual(["sakarya"]);
+    expect(cat("/blog/x").category).toBe("blog");
+    expect(cat("/kurumsal-web-tasarim").category).toBe("service");
+    expect(cat("/hakkimizda").category).toBe("about");
   });
 });

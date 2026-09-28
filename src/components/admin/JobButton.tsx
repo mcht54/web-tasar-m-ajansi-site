@@ -9,6 +9,7 @@ const LABEL: Record<string, string> = {
   autopilot: "Otopilot döngüsünü şimdi çalıştır", alarms: "Alarmları kontrol et", "weekly-email": "Haftalık raporu şimdi gönder", "daily-email": "Günlük raporu şimdi gönder",
   "auto-apply-proposals": "Süresi dolan önerileri şimdi işle",
   "content-opportunity-scan": "İçerik yenileme taraması", "service-page-opportunity": "Hizmet sayfası taraması", "local-seo-opportunity": "İlçe (lokal SEO) taraması",
+  "competitor-discovery": "Rakip adayı keşfi", "competitor-crawl": "Rakipleri tara", "competitor-opportunity-scan": "Rakip fırsatlarını tara",
 };
 
 /** İşi tetikleyen buton + son çalıştırma durumu. */

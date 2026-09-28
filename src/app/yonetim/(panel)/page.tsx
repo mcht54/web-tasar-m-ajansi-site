@@ -58,9 +58,12 @@ export default async function Dashboard(props: PageProps<"/yonetim">) {
   const locPublished = locPages.find((l) => l.status === "PUBLISHED")?._count ?? 0;
   const locDraft = locPages.filter((l) => l.status !== "PUBLISHED").reduce((s, l) => s + l._count, 0);
   const nd = (v: React.ReactNode, has: boolean) => (has ? v : <NoData />);
-  const [apRun, apPending] = await Promise.all([
+  const [apRun, apPending, compCount, compPending, compApplied] = await Promise.all([
     db.autopilotRun.findFirst({ orderBy: { startedAt: "desc" }, include: { actions: { select: { status: true } } } }),
-    db.autopilotAction.count({ where: { status: "needs_approval" } }),
+    db.autopilotAction.count({ where: { status: { in: ["pending_approval", "needs_approval"] } } }),
+    db.competitor.count(),
+    db.autopilotAction.count({ where: { source: "competitor", status: "pending_approval" } }),
+    db.autopilotAction.count({ where: { source: "competitor", status: "applied" } }),
   ]);
   return (
     <>
@@ -72,7 +75,15 @@ export default async function Dashboard(props: PageProps<"/yonetim">) {
         <div className="grid gap-3 sm:grid-cols-3">
           <Stat label="Son haftalık döngü" value={apRun ? apRun.weekKey : "—"} hint={apRun ? `${fmtDate(apRun.startedAt, true)} · ${apRun.status === "ok" ? "tamam" : apRun.status === "partial" ? "kısmi" : apRun.status}` : "Henüz çalışmadı"} />
           <Stat label="Bu döngüde uygulanan" value={apRun ? apRun.actions.filter((a) => a.status === "applied").length : "—"} hint="Sürüm geçmişli, geri alınabilir" />
-          <Stat label="Onay bekleyen" value={apPending} tone={apPending ? "warn" : undefined} hint={<Link href="/yonetim/autopilot?sekme=onay" className="underline">İncele</Link>} />
+          <Stat label="Onay bekleyen" value={apPending} tone={apPending ? "warn" : undefined} hint={<Link href="/yonetim/oneriler" className="underline">Öneriler (48 saat)</Link>} />
+        </div>
+      </Section>
+
+      <Section title="Rakip fırsatları" href="/yonetim/rakipler" link="Rakip analizi">
+        <div className="grid gap-3 sm:grid-cols-3" data-competitor-section>
+          <Stat label="İzlenen rakip" value={compCount} hint={compCount ? undefined : "Rakip eklenmedi"} />
+          <Stat label="Onay bekleyen rakip önerisi" value={compPending} tone={compPending ? "warn" : undefined} hint={<Link href="/yonetim/oneriler?kategori=COMPETITOR" className="underline">İncele</Link>} />
+          <Stat label="Uygulanan rakip önerisi" value={compApplied} hint="Sürüm geçmişli, geri alınabilir" />
         </div>
       </Section>
 

@@ -18,6 +18,7 @@ async function loadAll(): Promise<AllSettings> {
     robots: parseSetting("robots", map.get("robots")),
     email: parseSetting("email", map.get("email")),
     autopilot: parseSetting("autopilot", map.get("autopilot")),
+    competitors: parseSetting("competitors", map.get("competitors")),
   };
 }
 
