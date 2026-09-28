@@ -147,11 +147,26 @@ await step("AI asistanı (kural tabanlı): öneri onaylanınca sayfaya uygulanı
   await page.selectOption('select[name="pageId"]', opt);
   await page.click('button:has-text("Üret")');
   await page.waitForSelector("text=Onay bekliyor");
-  const title = (await page.locator("div.rounded-xl p.font-semibold").first().textContent()).replace(/\s*\(\d+\)$/, "").trim();
-  await page.click('button:has-text("Bu seçeneği sayfaya uygula") >> nth=0');
+  await page.waitForSelector('button:has-text("Bu seçeneği sayfaya uygula")');
+  const suggestionUrl = page.url();
+  const currentTitle = () => html("/seo-hizmeti").then((r) => r.text()).then((t) => (/<title>(.*?)<\/title>/.exec(t) ?? [])[1].replace(/&amp;/g, "&"));
+  const titles = (await page.locator("div.rounded-xl p.font-semibold").allTextContents()).map((t) => t.replace(/\s*\(\d+\)$/, "").trim());
+  const before = await currentTitle();
+  // Mevcutla aynı seçenek: "uygulandı" DENMEZ, hata gösterilir, sayfa değişmez
+  const same = titles.indexOf(before);
+  if (same >= 0) {
+    await page.click(`button:has-text("Bu seçeneği sayfaya uygula") >> nth=${same}`);
+    await page.waitForSelector("text=Değişiklik oluşmadı");
+    assert.equal(await page.locator("text=ve sayfaya uygulandı").count(), 0, "değişiklik yokken başarı gösterildi");
+    assert.equal(await currentTitle(), before);
+    await page.goto(suggestionUrl);
+  }
+  // Farklı seçenek: gerçekten uygulanır ve sitede görünür
+  const diff = titles.findIndex((t) => t !== before);
+  assert.ok(diff >= 0, "farklı seçenek yok");
+  await page.click(`button:has-text("Bu seçeneği sayfaya uygula") >> nth=${diff}`);
   await page.waitForSelector("text=ve sayfaya uygulandı");
-  const pub = await (await html("/seo-hizmeti")).text();
-  assert.ok(pub.includes(`<title>${title.replace(/&/g, "&amp;")}</title>`), `title uygulanmadı: ${title}`);
+  assert.equal(await currentTitle(), titles[diff], `title uygulanmadı: ${titles[diff]}`);
 });
 
 await step("Medya: yükleme WebP/AVIF varyantları üretir", async () => {

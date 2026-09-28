@@ -277,17 +277,40 @@ export async function executeAction(actionId: string, opts: { allowControlled: b
   return r;
 }
 
-/** İnsan onayı: bekleyen kontrollü içerik önerisini uygular; diğer türlerde kararı kaydeder. */
+/**
+ * Onaylanan öneride sayfaya yazılabilecek somut bir değişiklik var mı? Yoksa gerçek neden
+ * döner (düğme gösterilmez; "onaylandı" deyip hiçbir şey yapmamak yasak).
+ */
+export function applyBlocker(a: Pick<Action, "type" | "pageId" | "proposal">): string | null {
+  const prop = (a.proposal ?? {}) as Proposal & { pageId?: string | null; group?: unknown };
+  switch (a.type) {
+    case "TITLE": case "META": return a.pageId ? null : "Öneriye bağlı sayfa yok";
+    case "INTERNAL_LINK": return prop.payload?.source && prop.payload?.target ? null : "Kaynak/hedef sayfa bilgisi yok";
+    case "BROKEN_LINK": return a.pageId && prop.payload?.to ? null : "Kırık linkin doğru hedefi bilinmiyor; sayfa editöründen düzeltin";
+    case "CONTENT":
+      if (prop.section && a.pageId) return null;
+      return aiHooks.available() ? null : "Bu öneride uygulanacak içerik yok: yapay zekâ anahtarı bağlı değil ve içerik kural tabanlı üretilmez (uydurma riski). Ayarlar → Entegrasyonlar'dan anahtar ekleyin veya sayfayı editörden genişletin.";
+    case "NEW_PAGE": return prop.group ? null : "Yeni sayfa önerisinde sorgu kümesi yok";
+    default: return "Bu tür (teknik/lokasyon/cannibalization kararı) otomatik uygulanmaz; ilgili ekrandan elle yapılır.";
+  }
+}
+
+/**
+ * İnsan onayı: öneriyi uygular. Uygulanamıyorsa hata fırlatır (sessiz başarı yok);
+ * uygulama denenip olmadıysa işlem onay listesinde kalır ve gerçek neden yazılır.
+ */
 export async function approveAction(user: SessionUser, id: string, model: string): Promise<ExecOutcome> {
   const a = await db.autopilotAction.findUniqueOrThrow({ where: { id } });
   if (a.status !== "needs_approval") throw new Error("Bu işlem onay beklemiyor");
+  const blocker = applyBlocker(a);
+  if (blocker) throw new Error(blocker);
   const prop = a.proposal as Proposal;
   if (a.type === "CONTENT" && prop.section && a.pageId) {
     const { page } = await pageInput(a.pageId);
     const body = `${(page.body ?? "").trimEnd()}\n\n## ${prop.section.heading}\n\n${prop.section.markdown.trim()}\n`;
     const r = await commit(a, page.id, "body", body, `İçerik bölümü (onaylayan: ${user.name})`, { approved: true });
     if (r.status === "applied") await startExperiment({ actionId: a.id, pageId: page.id, pagePath: page.path, type: a.type, query: a.query, appliedAt: new Date() });
-    else await db.autopilotAction.update({ where: { id }, data: { status: r.status, qualityNotes: r.note } });
+    else await db.autopilotAction.update({ where: { id }, data: { status: "needs_approval", qualityNotes: r.note } });
     return r;
   }
   if (a.type === "NEW_PAGE") {
@@ -302,10 +325,11 @@ export async function approveAction(user: SessionUser, id: string, model: string
     }
     return executeAction(id, { allowControlled: true, model, approvedBy: user.name });
   }
-  if (a.type === "TITLE" || a.type === "META" || (a.type === "BROKEN_LINK" && ((a.proposal as Proposal).payload ?? {}).to)) return executeAction(id, { allowControlled: true, model, approvedBy: user.name });
-  await db.autopilotAction.update({ where: { id }, data: { status: "approved", qualityNotes: `Onaylandı (${user.name}); uygulama editörde yapılır.` } });
-  await db.auditLog.create({ data: { userId: user.id, action: "autopilot.approve", entity: "autopilotAction", entityId: id } });
-  return { status: "needs_approval", note: "Onaylandı; değişikliği sayfa editöründen yapın" };
+  const r = await executeAction(id, { allowControlled: true, model, approvedBy: user.name });
+  await db.auditLog.create({ data: { userId: user.id, action: r.status === "applied" ? "autopilot.approve.apply" : "autopilot.approve.fail", entity: "autopilotAction", entityId: id, detail: { status: r.status, note: r.note } } });
+  // Uygulanamadıysa öneri kaybolmaz: onay listesinde gerçek nedenle kalır
+  if (r.status !== "applied") await db.autopilotAction.update({ where: { id }, data: { status: "needs_approval", qualityNotes: r.note } });
+  return r;
 }
 
 export async function rejectAction(user: SessionUser, id: string) {

@@ -17,6 +17,7 @@ import { agentMode } from "@/lib/settings-schema";
 import { siteUrl } from "@/lib/env";
 import { Badge, Card, Notice, PageTitle, Stat, Table, fmtDate } from "@/components/admin/ui";
 import { JobButton } from "@/components/admin/JobButton";
+import { applyBlocker } from "@/lib/autopilot/execute";
 import { approveAutopilotAction, rejectAutopilotAction, rollbackAutopilotAction } from "./actions";
 
 export const metadata = { title: "SEO Otopilot" };
@@ -38,6 +39,7 @@ function ActionRow({ a, tab }: { a: Row; tab: string }) {
   const before = a.before as { field: string; value: unknown } | null;
   const after = a.after as { field: string; value: unknown } | null;
   const show = (v: unknown) => (typeof v === "string" ? v : JSON.stringify(v));
+  const blocker = a.status === "needs_approval" ? applyBlocker(a) : null;
   return (
     <tr>
       <td className="font-semibold tabular-nums">{a.score}</td>
@@ -63,8 +65,10 @@ function ActionRow({ a, tab }: { a: Row; tab: string }) {
       <td className="whitespace-nowrap">
         {a.pageId && <Link href={`/yonetim/sayfalar/${a.pageId}`} className="mr-2 text-xs underline">Sayfa</Link>}
         {a.status === "needs_approval" && (
-          <span className="inline-flex gap-1">
-            <form action={approveAutopilotAction}><input type="hidden" name="id" value={a.id} /><input type="hidden" name="tab" value={tab} /><button className="rounded-full bg-ink px-3 py-1 text-xs text-paper">Onayla</button></form>
+          <span className="inline-flex flex-wrap gap-1">
+            {blocker
+              ? <span className="max-w-[16rem] whitespace-normal text-xs text-warn" data-apply-blocked>Uygulanamaz: {blocker}</span>
+              : <form action={approveAutopilotAction}><input type="hidden" name="id" value={a.id} /><input type="hidden" name="tab" value={tab} /><button className="rounded-full bg-ink px-3 py-1 text-xs text-paper">Onayla ve uygula</button></form>}
             <form action={rejectAutopilotAction}><input type="hidden" name="id" value={a.id} /><input type="hidden" name="tab" value={tab} /><button className="rounded-full border border-line px-3 py-1 text-xs">Reddet</button></form>
           </span>
         )}

@@ -86,6 +86,8 @@ export async function applyFix(user: SessionUser, id: string, fields: { seoTitle
   });
   const r = await savePage(user, page.id, input, `ÇÖZÜM ÖNER uygulandı (${s.provider})`);
   if (!r.ok) throw new Error(r.error);
+  // Seçilen değerler sayfadakiyle aynıysa hiçbir şey değişmemiştir: "uygulandı" denmez
+  if (!r.changed.length) throw new Error("Değişiklik oluşmadı: seçilen alanlar sayfadaki mevcut değerlerle aynı. Önerilen alanı düzenleyip tekrar deneyin.");
   // Geri alma hedefi: az önce oluşan sürümden bir önceki (tam) sürüm
   const [, before] = await db.pageVersion.findMany({ where: { pageId: page.id }, orderBy: { version: "desc" }, take: 2, select: { id: true } });
   const out = s.output as Record<string, unknown>;
@@ -189,6 +191,7 @@ export async function approveSuggestion(user: SessionUser, id: string, optionInd
     });
     const r = await savePage(user, s.pageId, input, `AI önerisi onaylandı (${s.provider})`);
     if (!r.ok) throw new Error(r.error);
+    if (!r.changed.length) throw new Error("Değişiklik oluşmadı: bu seçenek sayfadaki mevcut değerlerle aynı.");
   }
   if (out.kind === "draft" && s.pageId) {
     // Taslak sayfaya yazılır ama sayfa TASLAK kalır; [DOĞRULANMALI] işaretleri
