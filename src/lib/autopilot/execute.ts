@@ -27,7 +27,20 @@ type RelatedLink = { path: string; anchor: string; reason?: string };
 type Action = Awaited<ReturnType<typeof db.autopilotAction.findUniqueOrThrow>>;
 type Proposal = { pagePath?: string | null; payload?: Record<string, unknown>; section?: { heading: string; markdown: string }; alternatives?: unknown };
 
-export type ExecOutcome = { status: "applied" | "skipped" | "failed" | "needs_approval"; note: string; changedPaths?: string[] };
+export type FieldChange = { field: keyof PageInput; before: unknown; after: unknown };
+export type PageChangeSet = { pageId: string; path: string; changes: FieldChange[] };
+export type ProposedChanges = { pages: PageChangeSet[] };
+
+export type ExecOutcome = {
+  status: "applied" | "skipped" | "failed" | "needs_approval" | "prepared";
+  note: string;
+  changedPaths?: string[];
+  changes?: ProposedChanges; // prepared: uygulanacak somut değişiklik
+  noAuto?: string; // prepared ama otomatik uygulanmamalı (ör. elle düzenlenmiş alan)
+};
+
+/** Hazırlık modu: kalite kapısı çalışır, sayfaya yazılmaz; değişiklik listesi döner. */
+type PrepAction = Action & { prepareOnly?: boolean };
 
 /** AI çağrısı test ve geliştirme ortamında taklit edilebilir. */
 export const aiHooks = { snippets: aiSnippets, section: aiSection, page: aiPage, available: claudeAvailable };
@@ -51,7 +64,13 @@ async function manualEditBlock(pageId: string, field: keyof PageInput): Promise<
   return human ? `“${label}” alanı ${human.createdAt.toLocaleDateString("tr-TR")} tarihinde ${human.userName ?? "bir editör"} tarafından elle düzenlenmiş; son ${MANUAL_EDIT_GUARD_DAYS} gün içinde otomatik değişiklik yapılmaz. Öneri onay bekliyor.` : null;
 }
 
-async function commit(a: Action, pageId: string, field: keyof PageInput, value: unknown, note: string, opts: { approved?: boolean } = {}): Promise<ExecOutcome> {
+async function commit(a: PrepAction, pageId: string, field: keyof PageInput, value: unknown, note: string, opts: { approved?: boolean } = {}): Promise<ExecOutcome> {
+  if (a.prepareOnly) {
+    const { page, cur } = await pageInput(pageId);
+    if (!diffFields({ [field]: cur[field] ?? null }, { [field]: value ?? null }).length) return { status: "skipped", note: "Değişiklik oluşmadı (değer zaten aynı)" };
+    const block = opts.approved ? null : await manualEditBlock(pageId, field);
+    return { status: "prepared", note, changes: { pages: [{ pageId, path: page.path, changes: [{ field, before: cur[field] ?? null, after: value ?? null }] }] }, ...(block ? { noAuto: block } : {}) };
+  }
   if (!opts.approved) {
     const block = await manualEditBlock(pageId, field);
     if (block) {
@@ -227,13 +246,16 @@ async function execContent(a: Action, model: string, allowControlled: boolean): 
   const qc = checkSection(`${section.heading}\n${section.markdown}`, { query: a.query, sourceText, beforeWords: before, addedWords: added, places: await placeNames(), otherPages: await otherPageTexts(page.id) });
   await db.autopilotAction.update({ where: { id: a.id }, data: { proposal: { ...(a.proposal as object), section, qc } as object, qualityNotes: qc.problems.join("; ") || null } });
   if (md.headings.some((h) => trLower(h.text) === trLower(section.heading))) return { status: "skipped", note: "Önerilen başlık sayfada zaten var" };
+  const body = `${(page.body ?? "").trimEnd()}\n\n## ${section.heading.replace(/^#+\s*/, "")}\n\n${section.markdown.trim()}\n`;
+  const note = `İçerik bölümü eklendi: “${section.heading}”`;
   if (!qc.ok) {
     const onlySize = qc.problems.every((p) => p.includes("%40"));
+    // Büyük değişiklik: öneri hazırlanır ama yalnızca insan onayıyla uygulanır
+    if (onlySize && (a as PrepAction).prepareOnly) return { ...(await commit(a, page.id, "body", body, note)), noAuto: qc.problems.join("; ") };
     return onlySize ? { status: "needs_approval", note: qc.problems.join("; ") } : { status: "skipped", note: `Kalite kapısı: ${qc.problems.join("; ")}` };
   }
   if (!allowControlled) return { status: "needs_approval", note: "Kontrollü otomatik uygulama kapalı; öneri onay bekliyor" };
-  const body = `${(page.body ?? "").trimEnd()}\n\n## ${section.heading.replace(/^#+\s*/, "")}\n\n${section.markdown.trim()}\n`;
-  return commit(a, page.id, "body", body, `İçerik bölümü eklendi: “${section.heading}”`);
+  return commit(a, page.id, "body", body, note);
 }
 
 /** Tek işlemi çalıştırır ve sonucu işleme yazar. */
@@ -275,6 +297,31 @@ export async function executeAction(actionId: string, opts: { allowControlled: b
     await startExperiment({ actionId: a.id, pageId: measured.id, pagePath: measured.path, type: a.type, query: a.query, appliedAt: fresh.appliedAt ?? new Date() });
   }
   return r;
+}
+
+/**
+ * Öneriyi HAZIRLAR: uygulama anında yapılacak tüm hesap (alternatif üretimi, kalite kapısı,
+ * yapay zekâ bölümü, yeni sayfa taslağı + kapı) şimdi yapılır; sonuç somut değişiklik
+ * listesidir. Yayındaki sayfaya dokunulmaz (yeni sayfa taslağı görünmez kalır). Böylece
+ * kullanıcı onay penceresinde tam olarak neyin uygulanacağını görür.
+ */
+export async function prepareAction(actionId: string, opts: { model: string }): Promise<ExecOutcome> {
+  const found = await db.autopilotAction.findUniqueOrThrow({ where: { id: actionId } });
+  await loadAiKey();
+  const a: PrepAction = { ...found, prepareOnly: true };
+  try {
+    switch (a.type) {
+      case "TITLE": return await execTitle(a, opts.model);
+      case "META": return await execMeta(a, opts.model);
+      case "INTERNAL_LINK": return await execLink(a);
+      case "BROKEN_LINK": return await execBroken(a);
+      case "CONTENT": return await execContent(a, opts.model, true);
+      case "NEW_PAGE": return await execNewPage(a, { model: opts.model, prepareOnly: true });
+      default: return { status: "needs_approval", note: "Bu tür (teknik/lokasyon/cannibalization kararı) otomatik uygulanmaz; ilgili ekrandan elle yapılır." };
+    }
+  } catch (e) {
+    return { status: "failed", note: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /**

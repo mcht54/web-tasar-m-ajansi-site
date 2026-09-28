@@ -11,6 +11,8 @@ import { runAutopilot } from "../autopilot/run";
 import { runAlarms } from "../autopilot/alarms";
 import { sendWeeklyEmail } from "../autopilot/weekly";
 import { sendDailyEmail } from "../autopilot/daily";
+import { runAutoApply } from "../proposals/lifecycle";
+import { refreshPublic } from "../admin/pages";
 
 /** Son 26 saatte gerçekten değişen (alan logu olan) URL'leri IndexNow ile bildirir. */
 async function indexNowRecent() {
@@ -75,6 +77,14 @@ registerJob("autopilot", async (by) => {
   const msg = `${r.weekKey}: ${r.stages.filter((s) => s.status === "ok").length}/23 aşama tamam, uygulanan ${r.exec.applied ?? 0}`;
   if (r.errors) throw new Error(`${msg}; ${r.errors} aşama hatalı: ${r.stages.filter((s) => s.status === "error").map((s) => `${s.name} (${s.message})`).join("; ")}`);
   return { message: msg, stats: { runId: r.id } };
+});
+// 48 saatlik onay: süresi dolan düşük/orta riskli önerileri uygular. Tek tek öneri
+// hataları işi düşürmez (her biri kendi kaydında yeniden denenir / başarısız olur).
+registerJob("auto-apply-proposals", async () => {
+  const s = await runAutoApply();
+  const parts = [`süresi dolan ${s.due}`, `uygulanan ${s.applied}`, `yeniden denenecek ${s.retry}`, `başarısız ${s.failed}`, s.skipped ? `atlanan ${s.skipped}` : "", s.recovered ? `yarıda kalan ${s.recovered}` : "", s.expiredManual ? `süresi dolmuş ama insan onayı gereken ${s.expiredManual}` : ""].filter(Boolean);
+  if (s.applied) refreshPublic();
+  return { status: s.due || s.recovered ? "ok" : "skipped", message: parts.join(", "), stats: s };
 });
 registerJob("alarms", async () => {
   const r = await runAlarms();

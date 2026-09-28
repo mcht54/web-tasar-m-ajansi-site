@@ -28,6 +28,7 @@ const STATUS: Record<string, { label: string; tone: "ok" | "warn" | "bad" | "mut
   planned: { label: "Planlandı", tone: "muted" }, applying: { label: "Uygulanıyor", tone: "warn" }, applied: { label: "Uygulandı", tone: "ok" }, needs_approval: { label: "Onay bekliyor", tone: "warn" },
   approved: { label: "Onaylandı", tone: "ok" }, skipped: { label: "Atlandı", tone: "muted" }, failed: { label: "Hata", tone: "bad" },
   rolled_back: { label: "Geri alındı", tone: "muted" }, rejected: { label: "Reddedildi", tone: "muted" },
+  pending_approval: { label: "Onay penceresinde", tone: "warn" }, blocked: { label: "Uygulanamaz (ön koşul eksik)", tone: "muted" }, preparing: { label: "Hazırlanıyor", tone: "muted" },
 };
 const OUTCOME: Record<string, string> = { positive: "Olumlu değişim gözlendi", neutral: "Belirgin değişim yok", negative: "Olumsuz değişim gözlendi", insufficient: "Yetersiz veri" };
 
@@ -71,6 +72,9 @@ function ActionRow({ a, tab }: { a: Row; tab: string }) {
               : <form action={approveAutopilotAction}><input type="hidden" name="id" value={a.id} /><input type="hidden" name="tab" value={tab} /><button className="rounded-full bg-ink px-3 py-1 text-xs text-paper">Onayla ve uygula</button></form>}
             <form action={rejectAutopilotAction}><input type="hidden" name="id" value={a.id} /><input type="hidden" name="tab" value={tab} /><button className="rounded-full border border-line px-3 py-1 text-xs">Reddet</button></form>
           </span>
+        )}
+        {(a.status === "pending_approval" || a.status === "blocked") && (
+          <Link href={`/yonetim/oneriler/${a.id}`} className="rounded-full bg-ink px-3 py-1 text-xs text-paper">{a.status === "blocked" ? "Nedenini gör" : "İncele / uygula"}</Link>
         )}
         {a.status === "applied" && (
           <form action={rollbackAutopilotAction}><input type="hidden" name="id" value={a.id} /><input type="hidden" name="tab" value={tab} /><button className="rounded-full border border-line px-3 py-1 text-xs">Geri al</button></form>
@@ -162,7 +166,7 @@ async function PendingTab() {
   const rows = await db.autopilotAction.findMany({ where: { status: "needs_approval" }, orderBy: [{ score: "desc" }], take: 100 });
   return (
     <Card title="İnsan onayı bekleyen işlemler">
-      <p className="mb-3 text-xs text-muted">Yeni sayfa, büyük içerik değişikliği, yönlendirme, canonical/NOINDEX ve URL değişikliği gibi yüksek riskli işlemler asla otomatik yapılmaz.</p>
+      <p className="mb-3 text-xs text-muted">Yönlendirme, canonical/NOINDEX ve URL değişikliği gibi yüksek riskli işlemler asla otomatik yapılmaz. 48 saatlik onay penceresindeki öneriler <Link href="/yonetim/oneriler" className="underline">Öneriler</Link> ekranındadır.</p>
       <Table head={["Skor", "İşlem", "Tür", "Risk", "Durum", ""]} empty="Onay bekleyen işlem yok.">
         {rows.map((a) => <ActionRow key={a.id} a={a} tab="onay" />)}
       </Table>

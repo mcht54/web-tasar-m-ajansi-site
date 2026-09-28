@@ -2,7 +2,7 @@ import "server-only";
 import { db } from "../db";
 import { runFullAnalysis } from "../seo/analyzer";
 
-export const JOB_KINDS = ["analyze", "opportunities", "crawl", "gsc-sync", "rank-update", "index-inspect", "indexnow", "sitemap-check", "daily", "autopilot", "alarms", "weekly-email", "daily-email"] as const;
+export const JOB_KINDS = ["analyze", "opportunities", "crawl", "gsc-sync", "rank-update", "index-inspect", "indexnow", "sitemap-check", "daily", "autopilot", "alarms", "weekly-email", "daily-email", "auto-apply-proposals"] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
 export type JobResult = { id: string; kind: JobKind; status: "ok" | "error" | "skipped"; message: string; stats?: unknown };

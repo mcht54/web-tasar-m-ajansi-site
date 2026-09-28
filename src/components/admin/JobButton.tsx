@@ -7,6 +7,7 @@ const LABEL: Record<string, string> = {
   "rank-update": "Sıralamaları güncelle", "index-inspect": "İndeks durumunu kontrol et", daily: "Günlük işi çalıştır",
   indexnow: "IndexNow gönder / yeniden dene", "sitemap-check": "Sitemap'i doğrula",
   autopilot: "Otopilot döngüsünü şimdi çalıştır", alarms: "Alarmları kontrol et", "weekly-email": "Haftalık raporu şimdi gönder", "daily-email": "Günlük raporu şimdi gönder",
+  "auto-apply-proposals": "Süresi dolan önerileri şimdi işle",
 };
 
 /** İşi tetikleyen buton + son çalıştırma durumu. */

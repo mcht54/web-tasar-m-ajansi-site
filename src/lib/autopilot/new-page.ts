@@ -113,7 +113,7 @@ async function chooseParent(primary: string, excludeId: string) {
 }
 
 /** NEW_PAGE işlemini yürütür. */
-export async function execNewPage(a: Action, opts: { model: string; approved?: boolean }): Promise<ExecOutcome> {
+export async function execNewPage(a: Action, opts: { model: string; approved?: boolean; prepareOnly?: boolean }): Promise<ExecOutcome> {
   const prop = a.proposal as unknown as NewPageProposal;
   const settings = await getSettingsFresh();
   const mode = agentMode(settings.autopilot);
@@ -165,6 +165,8 @@ export async function execNewPage(a: Action, opts: { model: string; approved?: b
   await db.autopilotAction.update({ where: { id: a.id }, data: { pageId, proposal: { ...prop, pageId, parentPath: parent?.path ?? null, gate: gate.checks, verifyNotes: content.verifyNotes } as object } });
   const fails = gate.checks.filter((c) => c.status === "FAIL");
   if (!gate.ok) return { status: "needs_approval", note: `Kalite kapısı: ${fails.map((f) => `${f.label} — ${f.note}`).join("; ")}. Sayfa TASLAK olarak saklandı.` };
+  // Hazırlık: taslak hazır ve kapıyı geçti; uygulanacak tek değişiklik yayına alma
+  if (opts.prepareOnly) return { status: "prepared", note: `Taslak kalite kapısını geçti: ${page.path}`, changes: { pages: [{ pageId, path: page.path, changes: [{ field: "status", before: "DRAFT", after: "PUBLISHED" }] }] } };
   if (mode !== "AUTONOMOUS" && !opts.approved) return { status: "needs_approval", note: "Taslak kalite kapısını geçti; ASSIST modunda yayın onayı bekliyor." };
   return publishNewPage(a, pageId, parent?.path ?? null);
 }

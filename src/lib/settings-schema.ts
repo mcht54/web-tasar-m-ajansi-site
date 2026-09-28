@@ -129,6 +129,9 @@ export const autopilotSchema = z.object({
   autoApplySafe: z.boolean().default(true), // title, meta, iç link, kırık link
   autoApplyControlled: z.boolean().default(true), // doğrulanmış bilgiyle içerik genişletme
   maxChangesPerWeek: z.number().int().min(0).max(50).default(10),
+  // Öneri onay penceresi: bu süre içinde onaylanmayan düşük/orta riskli öneri otomatik
+  // uygulanır. 0 = pencere yok (güvenli öneri döngü içinde hemen uygulanır; eski davranış).
+  approvalWindowHours: z.number().int().min(0).max(168).default(48),
 });
 
 export const settingSchemas = {

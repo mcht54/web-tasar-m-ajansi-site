@@ -49,6 +49,9 @@ export async function dueJobs(now = new Date()): Promise<JobKind[]> {
     const sent = await db.emailLog.findFirst({ where: { kind: "weekly", createdAt: { gte: new Date(now.getTime() - 6 * 24 * HOUR) } } });
     if (!sent) add("weekly-email");
   }
+  // 48 saatlik onay: süresi dolan öneriler 15 dakikada bir kontrol edilir (panel kapalı olsa da)
+  const autoApply = await lastOf("auto-apply-proposals");
+  if (!autoApply || now.getTime() - autoApply.startedAt.getTime() >= 15 * 60_000 - 30_000) add("auto-apply-proposals");
   // Kritik alarmlar: saatte bir
   const alarms = await lastOf("alarms");
   if (!alarms || now.getTime() - alarms.startedAt.getTime() >= HOUR - 60_000) add("alarms");
