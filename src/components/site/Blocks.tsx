@@ -100,17 +100,18 @@ export function Faq({ items, title = "Sık sorulan sorular" }: { items: { q: str
 export function CtaBand({ title = "Projenizi konuşalım", text, whatsapp }: { title?: string; text?: string; whatsapp?: string }) {
   return (
     <section className="mx-auto mt-20 max-w-6xl px-4 sm:px-6">
-      <div className="relative overflow-hidden rounded-[28px] bg-ink px-6 py-12 text-paper sm:px-12">
-        <div aria-hidden className="absolute -right-16 -top-16 h-64 w-64 rounded-full bg-accent/30 blur-3xl" />
-        <p className="font-display text-[clamp(2rem,1.5rem+2vw,3.2rem)] leading-tight">{title}</p>
-        <p className="mt-3 max-w-2xl text-paper/75">
+      <div className="stage relative overflow-hidden rounded-[32px] px-6 py-14 sm:px-12 sm:py-16">
+        <div aria-hidden className="stage-grid pointer-events-none absolute inset-0" />
+        <div aria-hidden className="glow-signal pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full" />
+        <p className="relative font-display text-[clamp(2.1rem,1.5rem+2.4vw,3.6rem)] leading-[1]">{title}</p>
+        <p className="relative mt-4 max-w-2xl text-snow/70">
           {text ?? "Hedeflerinizi, müşterilerinizi ve varsa mevcut sitenizi konuşalım; size uygun kapsamı ve kalem kalem açıklanmış bir teklif hazırlayalım."}
         </p>
-        <div className="mt-8 flex flex-wrap gap-3">
-          <Link href="/teklif-al" className="rounded-full bg-accent px-5 py-3 font-semibold text-accent-ink">Projenizi Konuşalım</Link>
-          <Link href="/teklif-al#on-analiz" className="rounded-full border border-paper/30 px-5 py-3 font-semibold hover:border-paper">Ücretsiz Ön Analiz</Link>
+        <div className="relative mt-8 flex flex-wrap gap-3">
+          <Link href="/teklif-al" className="cta-magnet inline-flex items-center gap-2 rounded-full bg-signal px-6 py-3.5 font-semibold text-white">Projenizi Başlatalım <span aria-hidden className="arrow">→</span></Link>
+          <Link href="/teklif-al#on-analiz" className="rounded-full border border-white/20 px-6 py-3.5 font-semibold text-snow hover:border-white">Ücretsiz Ön Analiz</Link>
           {whatsapp && (
-            <a href={`https://wa.me/${whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent("Merhaba, web siteniz üzerinden yazıyorum.")}`} rel="noopener" className="rounded-full border border-paper/30 px-5 py-3 font-semibold hover:border-paper">
+            <a href={`https://wa.me/${whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent("Merhaba, web siteniz üzerinden yazıyorum.")}`} rel="noopener" className="rounded-full border border-white/20 px-6 py-3.5 font-semibold text-snow hover:border-white">
               WhatsApp
             </a>
           )}

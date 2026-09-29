@@ -105,6 +105,54 @@ export const getPublishedReferences = unstable_cache(
   { tags: [PAGES_TAG, MEDIA_TAG], revalidate: 3600 },
 );
 
+/**
+ * Ana sayfanın "kanıt" bölümü için yalnızca veritabanından ölçülen gerçek sayılar.
+ * Ortalama SEO skoru sitenin kendi analiz motorunun yayındaki sayfalar için hesapladığı değerdir.
+ */
+export const getHomeStats = unstable_cache(
+  async () => {
+    const [byType, avg, services] = await Promise.all([
+      db.page.groupBy({ by: ["type"], where: { status: "PUBLISHED" }, _count: true }),
+      db.page.aggregate({ where: { status: "PUBLISHED", seoScore: { not: null } }, _avg: { seoScore: true }, _count: { seoScore: true } }),
+      db.service.count({ where: { active: true, pages: { some: { type: "SERVICE", status: "PUBLISHED" } } } }),
+    ]);
+    const n = (t: string) => byType.find((x) => x.type === t)?._count ?? 0;
+    return {
+      published: byType.reduce((s, x) => s + x._count, 0),
+      services,
+      sectors: n("SECTOR"),
+      guides: n("BLOG_POST"),
+      avgSeo: avg._avg.seoScore != null ? Math.round(avg._avg.seoScore) : null,
+      scored: avg._count.seoScore,
+    };
+  },
+  ["home-stats"],
+  { tags: [PAGES_TAG], revalidate: 3600 },
+);
+
+/**
+ * Ana sayfa vitrini: bu sitenin kendi yayındaki sayfaları (gerçek başlık, giriş, SEO skoru, SSS sayısı).
+ * Müşteri referansı değildir; arayüzde de öyle etiketlenir. Yayında olmayan yol sessizce atlanır.
+ */
+export const getShowcasePages = unstable_cache(
+  async (paths: string[]) => {
+    const rows = await db.page.findMany({
+      where: { path: { in: paths }, status: "PUBLISHED" },
+      select: { path: true, type: true, name: true, h1: true, intro: true, primaryKeyword: true, seoScore: true, faq: true, schemaDisabled: true, body: true },
+    });
+    return paths
+      .map((p) => rows.find((r) => r.path === p))
+      .filter((r): r is NonNullable<typeof r> => !!r)
+      .map(({ faq, body, ...r }) => ({
+        ...r,
+        faqCount: parseFaq(faq).length,
+        words: (body ?? "").split(/\s+/).filter(Boolean).length,
+      }));
+  },
+  ["showcase-pages"],
+  { tags: [PAGES_TAG], revalidate: 3600 },
+);
+
 export const getLogo = unstable_cache(
   async (id: string) => {
     if (!id) return null;
