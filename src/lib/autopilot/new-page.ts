@@ -22,6 +22,7 @@ import { matchTopic } from "./clusters";
 import { startExperiment } from "./experiments";
 import { AUTOPILOT_USER, aiHooks, type ExecOutcome } from "./execute";
 import { PROMPT_VERSION } from "./ai";
+import { ENGINE_PROVIDER, ENGINE_VERSION } from "../content-engine/engine";
 import { angleFor } from "../content/strategy";
 import { sanitizeDeep, unsafeMarkup } from "../content/sanitize";
 
@@ -164,7 +165,7 @@ export async function execNewPage(a: Action, opts: { model: string; approved?: b
   } catch (e) {
     return { status: "failed", note: `Yapay zekâ üretimi başarısız: ${aiErrorMessage(e)} — yarım içerik kaydedilmedi` };
   }
-  const generation = { provider: "anthropic", model: opts.model, promptVersion: PROMPT_VERSION.page, kind, intent: group.intent, angle: angle.key, generatedAt: new Date().toISOString(), ...(unsafe.length ? { sanitized: unsafe } : {}) };
+  const generation = { provider: ENGINE_PROVIDER, engine: ENGINE_VERSION, model: opts.model, promptVersion: PROMPT_VERSION.page, kind, intent: group.intent, angle: angle.key, generatedAt: new Date().toISOString(), ...(unsafe.length ? { sanitized: unsafe } : {}) };
   // Taslak oluştur / doldur (her zaman TASLAK; sürüm geçmişi)
   let pageId = existing?.id ?? null;
   if (!pageId) {

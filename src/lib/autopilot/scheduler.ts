@@ -23,7 +23,7 @@ export function istanbul(d: Date) {
 
 /** Zamanı gelmiş işlerin listesi (yan etkisiz; test edilebilir). Sıra = kuyruk sırası. */
 export async function dueJobs(now = new Date()): Promise<JobKind[]> {
-  const { email } = await getSettingsFresh();
+  const { email, autopilot } = await getSettingsFresh();
   const tr = istanbul(now);
   const today = istanbulMidnight(now);
   const due: JobKind[] = [];
@@ -35,9 +35,12 @@ export async function dueJobs(now = new Date()): Promise<JobKind[]> {
     // Veri hattı: son 20 saatte çalışmadıysa (harici cron ile çakışmaz)
     const daily = await lastOf("daily");
     if (!daily || now.getTime() - daily.startedAt.getTime() > 20 * HOUR) add("daily");
-    // Otonom ajan: günde bir zamanlanmış çalıştırma
-    const ran = await db.autopilotRun.findFirst({ where: { trigger: "schedule", startedAt: { gte: today } } });
-    if (!ran) add("autopilot");
+  }
+  // Sürekli otonom döngü: Autopilot AÇIKKEN son cycle'dan cycleHours sonra yenisi (23 aşamalı ajan
+  // cycle'ın içinde çalışır, ayrıca planlanmaz). KAPALIYKEN ne cycle ne ajan planlanır.
+  if (autopilot.enabled) {
+    const last = await lastOf("autopilot-cycle");
+    if (!last || now.getTime() - last.startedAt.getTime() >= autopilot.cycleHours * HOUR - 60_000) add("autopilot-cycle");
   }
   // Günlük rapor e-postası: bugün gönderilmediyse
   if (email.dailyReport && tr.hour >= email.dailyHour) {
@@ -67,6 +70,11 @@ export async function dueJobs(now = new Date()): Promise<JobKind[]> {
       await every("competitor-opportunity-scan", 6.5 * 24);
     }
     await every("competitor-discovery", 6.5 * 24);
+  }
+  // Merkezi temizlik: gece hattından sonra günde bir (5 günden eski geçici veri)
+  if (tr.hour >= NIGHTLY_HOUR + 2) {
+    const last = await lastOf("cleanup");
+    if (!last || now.getTime() - last.startedAt.getTime() > 20 * HOUR) add("cleanup");
   }
   // Panelden istenen rakip taraması: saat beklemeden kuyruğa (tarama worker'da, rakip kilidiyle)
   if (await db.competitor.count({ where: { crawlRequestedAt: { not: null }, status: { not: "paused" } } })) add("competitor-crawl");

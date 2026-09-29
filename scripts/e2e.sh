@@ -11,7 +11,8 @@ SEED_ADMIN_EMAIL=test-admin@example.com SEED_ADMIN_PASSWORD=TestSifre123456 npx 
 node --input-type=module -e "
 import pg from 'pg'; const c = new pg.Client({ connectionString: process.env.DATABASE_URL }); await c.connect();
 await c.query(\"update \\\"User\\\" set \\\"failedLogins\\\"=0, \\\"lockedUntil\\\"=null where email='test-admin@example.com'\");
-await c.query(\"update \\\"Setting\\\" set value='{}'::jsonb where key in ('robots','seo','email','autopilot')\");
+await c.query(\"update \\\"Setting\\\" set value='{}'::jsonb where key in ('robots','seo','email')\");
+await c.query(\"update \\\"Setting\\\" set value='{\\\"instantApply\\\":false}'::jsonb where key='autopilot'\");
 await c.query(\"delete from \\\"RateLimit\\\"\");
 await c.query(\"delete from \\\"Experiment\\\"\"); await c.query(\"delete from \\\"AutopilotRun\\\"\"); await c.query(\"delete from \\\"EmailLog\\\"\"); await c.query(\"delete from \\\"AlarmState\\\"\");
 await c.query(\"update \\\"Page\\\" set \\\"relatedLinks\\\"=null where \\\"relatedLinks\\\" is not null\");

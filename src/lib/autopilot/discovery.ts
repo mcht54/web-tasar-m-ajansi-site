@@ -1,23 +1,20 @@
 import "server-only";
-// Anahtar kelime keşfi: çekirdek havuz + Search Console'da görünen gerçek sorgular.
+// Anahtar kelime keşfi: kullanıcının seed kelimeleri + Search Console'da görünen gerçek sorgular.
 // Keşfedilen her sorguya niyet, küme ve hedef sayfa atanır. Uydurma hacim yok.
+// Seed kelimeler kodda değil, veritabanındadır: Keyword.source = "seed" (panel: Anahtar Kelimeler →
+// "Otopilot seed"). Durduruldu (PAUSED) seed, evren genişletmede kullanılmaz.
 
 import { db } from "../db";
 import { siteUrl } from "../env";
 import { getSettingsFresh } from "../settings";
-import { normalizeKeyword } from "../text/slug";
 import { detectLocation, loadLocations } from "../seo/location-demand";
 import { classifyIntent } from "./intent";
 import { ensureLocationCluster, ensureTopicClusters, matchTopic } from "./clusters";
 
-/** Başlangıç havuzu (sabit liste değil: yalnızca ilk tohum; gerisini veri belirler). */
-export const SEED_KEYWORDS = [
-  "web tasarım", "web tasarımcı", "web tasarım yapan yerler", "web tasarım ajansı", "web tasarım firması", "web tasarım şirketi",
-  "web sitesi", "web sitesi yaptırma", "web sitesi yapımı", "web sitesi tasarımı", "profesyonel web sitesi", "kurumsal web sitesi",
-  "kurumsal web tasarım", "web tasarım hizmeti", "e-ticaret sitesi", "e-ticaret sitesi yaptırma", "e-ticaret web sitesi",
-  "e-ticaret tasarımı", "online satış sitesi", "istanbul web tasarım", "ankara web tasarım", "izmir web tasarım",
-  "bursa web tasarım", "antalya web tasarım", "sakarya web tasarım", "adapazarı web tasarım", "serdivan web tasarım",
-];
+/** Aktif seed kelimeler (kullanıcının verdiği başlangıç noktaları). */
+export async function activeSeeds() {
+  return db.keyword.findMany({ where: { source: "seed", status: "ACTIVE" }, orderBy: { createdAt: "asc" } });
+}
 
 export type DiscoveryResult = { added: { phrase: string; impressions: number; position: number | null; cluster: string | null }[]; updated: number; seeded: number };
 
@@ -46,21 +43,18 @@ export async function discoverKeywords(opts: { minImpressions?: number; maxNew?:
     return { loc, intent, clusterId, clusterName };
   };
 
-  // 1) Tohum
-  let seeded = 0;
-  for (const phrase of SEED_KEYWORDS) {
-    const normalized = normalizeKeyword(phrase);
-    if (await db.keyword.findUnique({ where: { normalized } })) continue;
-    const c = await classify(phrase);
+  // 1) Seed: panelden girilen kelimeler; eksik küme/konum bilgisi tamamlanır (elle girilen niyet korunur)
+  const seeds = await activeSeeds();
+  for (const k of seeds) {
+    if (k.clusterId && k.intents.length) continue;
+    const c = await classify(k.phrase);
     const cluster = c.clusterId ? await db.keywordCluster.findUnique({ where: { id: c.clusterId }, select: { targetPageId: true } }) : null;
-    await db.keyword.create({
-      data: {
-        phrase, normalized, source: "seed", intent: c.intent.primary, intents: c.intent.intents, clusterId: c.clusterId,
-        targetPageId: cluster?.targetPageId ?? null, provinceId: c.loc?.provinceId, districtId: c.loc?.districtId, priority: 4,
-      },
+    await db.keyword.update({
+      where: { id: k.id },
+      data: { clusterId: k.clusterId ?? c.clusterId, intents: k.intents.length ? k.intents : c.intent.intents, targetPageId: k.targetPageId ?? cluster?.targetPageId ?? null, provinceId: k.provinceId ?? c.loc?.provinceId, districtId: k.districtId ?? c.loc?.districtId },
     });
-    seeded++;
   }
+  const seeded = seeds.length;
 
   // 2) Search Console'dan keşif (son 28 gün)
   const since = new Date(Date.now() - 28 * 86400_000);

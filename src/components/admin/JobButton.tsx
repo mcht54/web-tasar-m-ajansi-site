@@ -10,7 +10,7 @@ const LABEL: Record<string, string> = {
   "auto-apply-proposals": "Süresi dolan önerileri şimdi işle",
   "content-opportunity-scan": "İçerik yenileme taraması", "service-page-opportunity": "Hizmet sayfası taraması", "local-seo-opportunity": "İlçe (lokal SEO) taraması",
   "competitor-discovery": "Rakip adayı keşfi", "competitor-crawl": "Rakipleri tara", "competitor-opportunity-scan": "Rakip fırsatlarını tara",
-  "page-completeness-scan": "Eksik alan taraması",
+  "page-completeness-scan": "Eksik alan taraması", "autopilot-cycle": "Autopilot cycle'ını şimdi çalıştır", cleanup: "Geçici veriyi temizle",
 };
 
 /** İşi tetikleyen buton + son çalıştırma durumu. */
@@ -20,12 +20,12 @@ export async function JobButton({ kind, back }: { kind: string; back: string }) 
     <form action={runJobAction} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="kind" value={kind} />
       <input type="hidden" name="back" value={back} />
-      <button className="rounded-full bg-ink px-4 py-2 text-[13px] font-semibold text-paper" disabled={last?.status === "running"}>
-        {last?.status === "running" ? "Çalışıyor…" : LABEL[kind] ?? kind}
+      <button className="rounded-full bg-ink px-4 py-2 text-[13px] font-semibold text-paper" disabled={last?.status === "running" || last?.status === "queued"}>
+        {last?.status === "running" ? "Çalışıyor…" : last?.status === "queued" ? "Kuyrukta…" : LABEL[kind] ?? kind}
       </button>
       {last && (
         <span className={`text-xs ${last.status === "error" ? "text-bad" : "text-muted"}`} title={last.message ?? ""}>
-          Son: {fmtDate(last.startedAt, true)} · {last.status === "ok" ? "tamam" : last.status === "error" ? "hata" : last.status === "skipped" ? "atlandı" : "çalışıyor"}
+          Son: {fmtDate(last.startedAt, true)} · {last.status === "ok" ? "tamam" : last.status === "error" ? "hata" : last.status === "skipped" ? "atlandı" : last.status === "queued" ? "kuyrukta" : "çalışıyor"}
           {last.message ? ` — ${last.message.slice(0, 90)}` : ""}
         </span>
       )}

@@ -56,7 +56,7 @@ function fakeSite(opts: { hideSection?: boolean; omitFromSitemap?: string } = {}
 beforeAll(async () => {
   const u = await db.user.upsert({ where: { email: "content-autopilot@example.com" }, create: { email: "content-autopilot@example.com", name: "İçerik Testi", role: "ADMIN", passwordHash: "x" }, update: {} });
   admin = { id: u.id, email: u.email, name: u.name, role: "ADMIN", sessionId: "s" };
-  await saveSetting("autopilot", {});
+  await saveSetting("autopilot", { instantApply: false });
   const p = await page();
   original = { body: p.body, contentUpdatedAt: p.contentUpdatedAt };
   // Önceki çalıştırmalardan kalan test kullanıcısı kayıtları "elle düzenleme" korumasını tetiklemesin
@@ -114,7 +114,7 @@ describe("içerik önerisi → 48 saat → uygulama", () => {
     expect(ch.after.startsWith(original.body!.trimEnd())).toBe(true); // mevcut içerik korunur
     expect(ch.after).toContain(`## ${GOOD.heading}`);
     const gen = (a.proposal as { generation: Record<string, string> }).generation;
-    expect(gen).toMatchObject({ provider: "anthropic", model: "test-model", promptVersion: "section-v2" });
+    expect(gen).toMatchObject({ provider: "content-engine", model: "test-model", promptVersion: "section-v2" }); // harici yapay zekâ yok: içerik motoru
     expect(gen.intent).toBeTruthy();
     expect(gen.angle).toBeTruthy();
     expect(a.autoApply).toBe(true);

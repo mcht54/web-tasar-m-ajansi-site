@@ -50,6 +50,7 @@ export default async function Keywords(props: PageProps<"/yonetim/anahtar-kelime
               <select name="status" defaultValue={edit?.status ?? "ACTIVE"} className={inputCls}><option value="ACTIVE">Takipte</option><option value="PAUSED">Durduruldu</option></select>
             </label>
             <label className="text-[13px] font-medium sm:col-span-2">Not<input name="notes" defaultValue={edit?.notes ?? ""} className={inputCls} /></label>
+            <label className="flex items-center gap-2 text-[13px] font-medium sm:col-span-2"><input type="checkbox" name="seed" defaultChecked={edit?.source === "seed"} /> Otopilot seed kelimesi (başlangıç noktası; Durduruldu ise evren genişletmede kullanılmaz)</label>
             <p className="text-xs text-muted sm:col-span-2">Şehir, ilçe, hizmet ve sektör hedef sayfadan otomatik alınır.</p>
             <div className="flex gap-2 sm:col-span-2">
               <button className="rounded-full bg-ink px-4 py-2 text-paper">Kaydet</button>
@@ -62,6 +63,7 @@ export default async function Keywords(props: PageProps<"/yonetim/anahtar-kelime
             <textarea name="lines" rows={8} className={inputCls} placeholder={"web tasarım bursa ; /web-tasarim/bursa\nkurumsal web sitesi fiyatları\n…"} />
             <div className="flex gap-2">
               <select name="intent" className={`${inputCls} mt-0 max-w-xs`}>{Object.entries(INTENT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+              <label className="flex items-center gap-1.5 whitespace-nowrap text-[13px]"><input type="checkbox" name="seed" /> seed</label>
               <button className="rounded-full bg-ink px-4 text-paper">Ekle</button>
             </div>
             <p className="text-xs text-muted">Her satır bir kelime; isteğe bağlı olarak “;” sonrası hedef URL yolu.</p>
@@ -73,7 +75,7 @@ export default async function Keywords(props: PageProps<"/yonetim/anahtar-kelime
           <Table head={["Kelime", "Amaç", "Hedef URL", "Konum / hizmet", "Öncelik", "Hedef", "Mevcut", "Önceki", "Değişim", "Son kontrol", "SERP URL", "Durum", ""]}>
             {keywords.map((k) => (
               <tr key={k.id}>
-                <td><Link href={`/yonetim/siralama/${k.id}`} className="font-medium hover:underline">{k.phrase}</Link></td>
+                <td><Link href={`/yonetim/siralama/${k.id}`} className="font-medium hover:underline">{k.phrase}</Link>{k.source === "seed" ? <> <Badge tone="ok">seed</Badge></> : k.source === "competitor" ? <> <Badge>rakip sinyali</Badge></> : k.source === "universe" ? <> <Badge>evren</Badge></> : null}</td>
                 <td>{INTENT_LABELS[k.intent]}</td>
                 <td className="text-xs">{k.targetPage ? <>{k.targetPage.path}{k.targetPage.status !== "PUBLISHED" && <Badge tone="warn">taslak</Badge>}</> : "—"}</td>
                 <td className="text-xs text-muted">{[k.province?.name, k.district?.name, k.service?.name, k.sector?.name].filter(Boolean).join(" · ") || "—"}</td>

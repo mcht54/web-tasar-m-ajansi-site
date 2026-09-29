@@ -13,9 +13,10 @@ import { resolveDescription, resolveTitle } from "../seo/meta";
 import { extractMarkdown } from "../text/markdown";
 import { wordCount } from "../text/analyze";
 import { containsPhrase, trLower, trUpperFirst } from "../text/slug";
-import { claudeAvailable, aiErrorMessage } from "../ai/claude";
+import { aiErrorMessage } from "../ai/claude";
 import { getSettingsFresh } from "../settings";
-import { PROMPT_VERSION, aiFaq, aiIntro, aiPage, aiSection, aiSnippets } from "./ai";
+import { PROMPT_VERSION } from "./ai";
+import { ENGINE_PROVIDER, ENGINE_VERSION, engineHooks } from "../content-engine/engine";
 import { FIELD_EXECUTORS } from "./field-exec";
 import { classifyIntent } from "./intent";
 import { angleFor } from "../content/strategy";
@@ -48,7 +49,9 @@ export type ExecOutcome = {
 type PrepAction = Action & { prepareOnly?: boolean };
 
 /** AI çağrısı test ve geliştirme ortamında taklit edilebilir. */
-export const aiHooks = { snippets: aiSnippets, section: aiSection, page: aiPage, intro: aiIntro, faq: aiFaq, available: claudeAvailable };
+// İçerik üretim kancaları: harici yapay zekâ API'si YOK. Varsayılan, sitenin kendi gerçek verisiyle
+// çalışan deterministik içerik motorudur (content-engine). Testler kancaları değiştirerek dener.
+export const aiHooks = { ...engineHooks };
 
 async function pageInput(pageId: string) {
   const page = await db.page.findUniqueOrThrow({ where: { id: pageId } });
@@ -265,7 +268,7 @@ async function execContent(a: Action, model: string, allowControlled: boolean): 
   } catch (e) {
     return { status: "failed", note: `Yapay zekâ üretimi başarısız: ${aiErrorMessage(e)}` };
   }
-  const generation = { provider: "anthropic", model, promptVersion: PROMPT_VERSION.section, intent, angle: angle.key, generatedAt: new Date().toISOString() };
+  const generation = { provider: ENGINE_PROVIDER, engine: ENGINE_VERSION, model, promptVersion: PROMPT_VERSION.section, intent, angle: angle.key, generatedAt: new Date().toISOString() };
   const before = wordCount(sourceText);
   const added = wordCount(section.markdown);
   const qc = checkSection(`${section.heading}\n${section.markdown}`, { query: a.query, sourceText, beforeWords: before, addedWords: added, places: await placeNames(), otherPages: await otherPageTexts(page.id) });

@@ -132,6 +132,13 @@ export const autopilotSchema = z.object({
   // Öneri onay penceresi: bu süre içinde onaylanmayan düşük/orta riskli öneri otomatik
   // uygulanır. 0 = pencere yok (güvenli öneri döngü içinde hemen uygulanır; eski davranış).
   approvalWindowHours: z.number().int().min(0).max(168).default(48),
+  // Sürekli döngü (autopilot-cycle): biten cycle'dan bu kadar saat sonra zamanlayıcı yenisini başlatır
+  cycleHours: z.number().int().min(1).max(168).default(6),
+  // Birleşik fırsat motorunun bir cycle'da öneriye çevireceği en fazla fırsat (en yüksek skorlular)
+  maxActionsPerCycle: z.number().int().min(1).max(20).default(3),
+  // Tam otomatik: Autopilot AÇIK + AUTONOMOUS iken güvenli (düşük/orta riskli) öneriler onay penceresi
+  // beklemeden uygulanır. Kapalıysa (veya Autopilot KAPALI) mevcut onay penceresi aynen geçerlidir.
+  instantApply: z.boolean().default(true),
 });
 
 // Rakip tarayıcı sınırları (nazik tarama: tek rakip, düşük eşzamanlılık, istekler arası bekleme)
@@ -198,6 +205,21 @@ export function defaultSettings(): AllSettings {
 /** LocalBusiness schema'sı ancak ad + telefon + tam adres gerçekten girilmişse üretilir. */
 export function businessIsComplete(b: BusinessSettings): boolean {
   return Boolean(b.name && b.phone && b.street && b.city);
+}
+
+/** Autopilot AÇIK mı: sürekli cycle yalnızca açıkken çalışır. */
+export function autopilotOn(a: z.infer<typeof autopilotSchema>): boolean {
+  return a.enabled;
+}
+
+/** 48 saati dolan öneri otomatik uygulanabilir mi: Autopilot açık + AUTONOMOUS mod. */
+export function autoApplyAllowed(a: z.infer<typeof autopilotSchema>): boolean {
+  return a.enabled && a.mode === "AUTONOMOUS";
+}
+
+/** Tam otomatik mod: güvenli öneriler onay penceresi beklemeden uygulanır. */
+export function instantApplyOn(a: z.infer<typeof autopilotSchema>): boolean {
+  return autoApplyAllowed(a) && a.instantApply;
 }
 
 /** Etkin ajan modu (eski "enabled=false" ayarı ASSIST sayılır). */
