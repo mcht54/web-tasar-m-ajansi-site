@@ -91,7 +91,12 @@ export async function duplicateReason(key: string, now = clock.now()): Promise<{
 }
 
 /** Öneriyi oluşturur ve hemen hazırlar; sonuç: pending_approval | blocked | needs_approval | skipped | failed. */
-export async function createProposal(p: NewProposal, opts: { model: string; windowHours: number }): Promise<CreateResult> {
+/**
+ * `keepWindow`: çağıran modül onay penceresini ZORUNLU tutar (ör. rakip verisine dayalı öneriler:
+ * dış kaynaklı sinyal olduğu için her zaman insan itiraz süresi tanınır). Bu durumda tam otomatik mod
+ * (instantApply) pencereyi sıfırlamaz; süre dolunca mevcut 48 saat kuralıyla otomatik uygulanır.
+ */
+export async function createProposal(p: NewProposal, opts: { model: string; windowHours: number; keepWindow?: boolean }): Promise<CreateResult> {
   const now = clock.now();
   const dup = await duplicateReason(p.key, now);
   if (dup) return { id: dup.id, status: "duplicate", note: dup.note, duplicate: true };
@@ -104,10 +109,10 @@ export async function createProposal(p: NewProposal, opts: { model: string; wind
     },
   });
   const r = await prepareAction(row.id, { model: opts.model });
-  return finalizePrepared(row.id, p, r, opts.windowHours, now);
+  return finalizePrepared(row.id, p, r, opts.windowHours, now, opts.keepWindow ?? false);
 }
 
-async function finalizePrepared(id: string, p: NewProposal, r: ExecOutcome, windowHours: number, now: Date): Promise<CreateResult> {
+async function finalizePrepared(id: string, p: NewProposal, r: ExecOutcome, windowHours: number, now: Date, keepWindow: boolean): Promise<CreateResult> {
   if (r.status === "prepared" && hasChanges(r.changes)) {
     const changes = r.changes!;
     const fingerprint = fingerprintOf(p.key, changes);
@@ -119,7 +124,7 @@ async function finalizePrepared(id: string, p: NewProposal, r: ExecOutcome, wind
     const why = !p.allowAuto ? p.noAutoReason ?? "Mod/ayar/haftalık bütçe otomatik uygulamaya izin vermiyor" : blocker ?? r.noAuto ?? null;
     // Tam otomatik (Autopilot AÇIK + AUTONOMOUS + instantApply): otomatik uygulanabilir öneri pencere
     // beklemez; süresi hemen dolar ve mevcut uygulama hattı (aynı güvenlik kontrolleri) ilk turda uygular
-    const instant = autoApply && instantApplyOn((await getSettingsFresh()).autopilot);
+    const instant = autoApply && !keepWindow && instantApplyOn((await getSettingsFresh()).autopilot);
     const expiresAt = expiryFor(now, instant ? 0 : windowHours);
     await db.autopilotAction.update({
       where: { id },

@@ -96,7 +96,9 @@ export async function runCompetitorOpportunities(opts: { now?: Date } = {}): Pro
   ]);
   const b = contentBudget({ indexablePages: indexable, weakPages: Math.max(1, findings.filter((f) => f.proposal?.kind === "CONTENT").length), maxNewPagesPerWeek: ap.maxNewPagesPerWeek, maxChangesPerWeek: ap.maxChangesPerWeek, createdLast7: { newPages, refresh: refreshed } });
   const left = { CONTENT: b.refreshThisRun, NEW_PAGE: b.newPagesThisRun, SMALL: Math.max(0, Math.ceil(ap.maxChangesPerWeek / 3) - small) };
-  const window = { model: settings.integrations.aiModel, windowHours: ap.approvalWindowHours || 48 };
+  // Rakip verisine dayalı öneriler her zaman onay penceresinden geçer (pencere ayarı 0 ya da tam otomatik
+  // mod açık olsa bile): dış kaynaklı sinyal, insan itirazı için süre tanınır; süre dolunca otomatik uygulanır
+  const window = { model: settings.integrations.aiModel, windowHours: ap.approvalWindowHours || 48, keepWindow: true };
   const auto = mode === "AUTONOMOUS";
   for (const f of findings) {
     const pr = f.proposal;
