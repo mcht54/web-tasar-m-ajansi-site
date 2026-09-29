@@ -1,6 +1,7 @@
 // Uçtan uca testler — gerçek tarayıcı (sistem Chrome'u) ile, TEST veritabanına
 // bağlı ayrı bir sunucuya karşı çalışır:  npm run test:e2e
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import sharp from "sharp";
 import { browser, login } from "./helpers.mjs";
 
@@ -365,12 +366,27 @@ await step("Teknik SEO: robots, sitemap (200, noindex yok, kopya yok, canonical 
 await step("Otopilot: denetim → fırsat → kalite kapısı → uygula → sitede doğrula → geri al; sağlık özeti 10 kategori", async () => {
   await page.goto("/yonetim/autopilot");
   await Promise.all([page.waitForURL(/is=autopilot/), page.click('button:has-text("Otopilot döngüsünü şimdi çalıştır")')]);
-  // Arka plandaki döngünün bitmesini bekle (en çok 3 dk)
+  // Panel işi web isteğinde ÇALIŞTIRMAZ, yalnızca kuyruğa alır (tek kayıt; ikinci tık yeni iş açmaz)
+  assert.match(await page.locator("text=kuyruğa alındı").first().innerText(), /worker/);
+  {
+    const { default: pg } = await import("pg");
+    const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
+    await c.connect();
+    assert.equal(Number((await c.query(`select count(*) from "JobRun" where kind='autopilot' and status='queued'`)).rows[0].count), 1, "otopilot kuyruğa alınmadı");
+    await c.end();
+  }
+  // Bu adım süresince production'daki gibi yalnızca kuyruğu işleyen bir worker süreci (E2E'de zamanlayıcı kapalı)
+  const worker = spawn(process.execPath, ["node_modules/tsx/dist/cli.mjs", "--conditions=react-server", "scripts/worker.ts"], { env: { ...process.env, WORKER_ROLE: "worker", WORKER_INTERVAL_MS: "2000" }, stdio: "ignore" });
   let done = false;
-  for (let i = 0; i < 90 && !done; i++) {
-    await new Promise((r) => setTimeout(r, 2000));
-    await page.goto("/yonetim/autopilot");
-    done = (await page.locator("text=Son çalıştırma").locator("..").innerText()).match(/tamam|kısmi/) != null;
+  try {
+    // Kuyruktaki döngünün bitmesini bekle (en çok 3 dk)
+    for (let i = 0; i < 90 && !done; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      await page.goto("/yonetim/autopilot");
+      done = (await page.locator("text=Son çalıştırma").locator("..").innerText()).match(/tamam|kısmi/) != null;
+    }
+  } finally {
+    worker.kill("SIGTERM");
   }
   assert.ok(done, "otopilot döngüsü bitmedi");
   assert.equal(await page.locator("[data-health]").count(), 10);

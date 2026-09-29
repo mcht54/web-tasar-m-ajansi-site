@@ -34,7 +34,11 @@ export async function saveKeywordAction(form: FormData) {
   const normalized = normalizeKeyword(d.phrase);
   const clash = await db.keyword.findUnique({ where: { normalized } });
   if (clash && clash.id !== id) redirect(`/yonetim/anahtar-kelimeler?hata=${encodeURIComponent("Bu anahtar kelime zaten var")}`);
+  // Otopilot seed: işaretliyse "seed"; işaret kaldırılan seed "manual" olur; diğer kaynaklar (keşif/evren) korunur
+  const prev = id ? await db.keyword.findUnique({ where: { id }, select: { source: true } }) : null;
+  const source = form.get("seed") ? "seed" : prev?.source === "seed" ? "manual" : prev?.source ?? "manual";
   const data = {
+    source,
     phrase: d.phrase, normalized, intent: d.intent, priority: d.priority, status: d.status, notes: d.notes || null,
     targetPosition: d.targetPosition === "" ? null : d.targetPosition, ...(await relationsFor(d.targetPageId)),
   };
@@ -58,7 +62,7 @@ export async function bulkKeywordsAction(form: FormData) {
       continue;
     }
     const page = path ? await db.page.findUnique({ where: { path }, select: { id: true } }) : null;
-    await db.keyword.create({ data: { phrase, normalized, intent, ...(await relationsFor(page?.id ?? "")) } });
+    await db.keyword.create({ data: { phrase, normalized, intent, source: form.get("seed") ? "seed" : "manual", ...(await relationsFor(page?.id ?? "")) } });
     added++;
   }
   await audit(user.id, "keyword.bulk", "Keyword", null, { added, skipped });

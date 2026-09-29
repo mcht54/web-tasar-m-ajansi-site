@@ -278,8 +278,10 @@ export default async function Settings(props: PageProps<"/yonetim/ayarlar">) {
       {tab === "otopilot" && (
         <Card title="Otonom SEO motoru">
           <form action={saveAutopilotAction} className="grid gap-4 sm:grid-cols-2">
+            <label className="flex items-center gap-2 text-[13px] font-semibold sm:col-span-2"><input type="checkbox" name="enabled" defaultChecked={s.autopilot.enabled} /> Autopilot AÇIK <span className="text-xs font-normal text-muted">(kapalıyken cycle çalışmaz ve 48 saati dolan öneriler otomatik uygulanmaz; elle onay/red çalışır)</span></label>
+            <label className="flex items-center gap-2 text-[13px] sm:col-span-2"><input type="checkbox" name="instantApply" defaultChecked={s.autopilot.instantApply} /> Tam otomatik <span className="text-xs text-muted">(Autopilot açık + AUTONOMOUS iken güvenli düşük/orta riskli işlemler onay penceresini beklemeden uygulanır; kritik işlemler kilitli kalır)</span></label>
             <Field label="SEO ajanı modu" className="sm:col-span-2" hint="OBSERVE: yalnızca ölçer ve raporlar · ASSIST: önerileri ve taslakları hazırlar, onayla uygulanır · AUTONOMOUS: güvenli SEO işlemlerini, doğrulanmış içerik iyileştirmelerini ve kalite kapısını geçen yeni sayfaları kendisi uygular/yayınlar.">
-              <select name="mode" defaultValue={s.autopilot.enabled ? s.autopilot.mode : "ASSIST"} className={inputCls}>
+              <select name="mode" defaultValue={s.autopilot.mode} className={inputCls}>
                 <option value="OBSERVE">OBSERVE — yalnızca ölç</option>
                 <option value="ASSIST">ASSIST — önerileri hazırla</option>
                 <option value="AUTONOMOUS">AUTONOMOUS — kendi kendine çalış</option>
@@ -290,7 +292,9 @@ export default async function Settings(props: PageProps<"/yonetim/ayarlar">) {
             <Field label="Haftalık en çok otomatik değişiklik"><input name="maxChangesPerWeek" type="number" min={0} max={50} defaultValue={s.autopilot.maxChangesPerWeek} className={inputCls} /></Field>
             <Field label="Haftalık en çok yeni sayfa" hint="Ölçekli içerik (doorway) koruması; sayfa yalnızca gerçek talep + kalite kapısı ile açılır"><input name="maxNewPagesPerWeek" type="number" min={0} max={10} defaultValue={s.autopilot.maxNewPagesPerWeek} className={inputCls} /></Field>
             <Field label="Onay penceresi (saat)" hint="Bu sürede onaylanmayan/reddedilmeyen düşük ve orta riskli öneri otomatik uygulanır. 0 = pencere yok (güvenli öneri hemen uygulanır)."><input name="approvalWindowHours" type="number" min={0} max={168} defaultValue={s.autopilot.approvalWindowHours} className={inputCls} /></Field>
-            <p className="text-xs text-muted sm:col-span-2">Yeni sayfa yayını, büyük içerik değişikliği, yönlendirme, silme, canonical, NOINDEX ve URL değişikliği her zaman insan onayı gerektirir. Her otomatik değişiklik sürüm geçmişine yazılır ve geri alınabilir.</p>
+            <Field label="Cycle aralığı (saat)" hint="Biten cycle'dan bu kadar sonra zamanlayıcı yenisini başlatır (rakip → evren → site/GSC → fırsat → öneri → ölçüm)."><input name="cycleHours" type="number" min={1} max={168} defaultValue={s.autopilot.cycleHours} className={inputCls} /></Field>
+            <Field label="Cycle başına en çok fırsat" hint="Birleşik fırsat motoru her cycle'da yalnızca en yüksek skorlu bu kadar fırsatı öneriye çevirir."><input name="maxActionsPerCycle" type="number" min={1} max={20} defaultValue={s.autopilot.maxActionsPerCycle} className={inputCls} /></Field>
+            <p className="text-xs text-muted sm:col-span-2">Yeni sayfa yalnızca kalite kapısını geçerse ve (hizmet sayfasında) hizmet İşletme ayarlarında doğrulanmışsa taslaktan yayına alınır. Yönlendirme, silme, canonical, NOINDEX/INDEX ve URL değişikliği hiçbir zaman otomatik yapılmaz; konumlu sayfa ve cannibalization kararları insana bırakılır. Her otomatik değişiklik sürüm geçmişine yazılır ve geri alınabilir.</p>
             <div className="sm:col-span-2">{save}</div>
           </form>
         </Card>

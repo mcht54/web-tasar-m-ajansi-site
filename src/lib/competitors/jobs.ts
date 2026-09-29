@@ -14,6 +14,7 @@ import { crawlCompetitor } from "./crawl";
 import { isCrawling } from "./lock";
 import { enqueueJob } from "../jobs/runner";
 import { competitorFindings, FINDING_LABELS } from "./insights";
+import { learningStats } from "../autopilot/learning";
 import type { NetPolicy } from "./net";
 
 /**
@@ -83,7 +84,7 @@ export async function runCompetitorOpportunities(opts: { now?: Date } = {}): Pro
   const settings = await getSettingsFresh();
   const ap = settings.autopilot;
   const mode = agentMode(ap);
-  const { findings } = await competitorFindings();
+  const [{ findings }, learn] = await Promise.all([competitorFindings(), learningStats()]);
   const out: CompetitorScan = { findings: findings.length, actionable: findings.filter((f) => f.actionable).length, created: {}, items: [] };
   if (mode === "OBSERVE") return { ...out, skippedReason: "OBSERVE modu: yalnızca ölçülür" };
   const since = new Date(now.getTime() - 7 * 86400_000);
@@ -95,7 +96,9 @@ export async function runCompetitorOpportunities(opts: { now?: Date } = {}): Pro
   ]);
   const b = contentBudget({ indexablePages: indexable, weakPages: Math.max(1, findings.filter((f) => f.proposal?.kind === "CONTENT").length), maxNewPagesPerWeek: ap.maxNewPagesPerWeek, maxChangesPerWeek: ap.maxChangesPerWeek, createdLast7: { newPages, refresh: refreshed } });
   const left = { CONTENT: b.refreshThisRun, NEW_PAGE: b.newPagesThisRun, SMALL: Math.max(0, Math.ceil(ap.maxChangesPerWeek / 3) - small) };
-  const window = { model: settings.integrations.aiModel, windowHours: ap.approvalWindowHours || 48 };
+  // Rakip verisine dayalı öneriler her zaman onay penceresinden geçer (pencere ayarı 0 ya da tam otomatik
+  // mod açık olsa bile): dış kaynaklı sinyal, insan itirazı için süre tanınır; süre dolunca otomatik uygulanır
+  const window = { model: settings.integrations.aiModel, windowHours: ap.approvalWindowHours || 48, keepWindow: true };
   const auto = mode === "AUTONOMOUS";
   for (const f of findings) {
     const pr = f.proposal;
@@ -103,7 +106,10 @@ export async function runCompetitorOpportunities(opts: { now?: Date } = {}): Pro
     const bucket = pr.kind === "CONTENT" ? "CONTENT" : pr.kind === "NEW_PAGE" ? "NEW_PAGE" : "SMALL";
     if (left[bucket] <= 0) continue;
     const evidence = `${f.theirs} · ${f.ours}`;
-    const common = { source: "competitor", category: "COMPETITOR" as const, title: `[Rakip] ${f.title}`, reason: `${FINDING_LABELS[f.type]}: ${f.why}`, score: f.priority === "URGENT" ? 90 : f.priority === "HIGH" ? 70 : f.priority === "MEDIUM" ? 50 : 30, expectedImpact: f.action };
+    // Öğrenme: bu değişiklik türünün geçmiş ölçülen sonuçları önceliği 0,7–1,3 kat ayarlar
+    const type = pr.kind === "CONTENT" ? "CONTENT" : pr.kind === "NEW_PAGE" ? "NEW_PAGE" : pr.kind === "META" ? "META" : "INTERNAL_LINK";
+    const base = f.priority === "URGENT" ? 90 : f.priority === "HIGH" ? 70 : f.priority === "MEDIUM" ? 50 : 30;
+    const common = { source: "competitor", category: "COMPETITOR" as const, title: `[Rakip] ${f.title}`, reason: `${FINDING_LABELS[f.type]}: ${f.why}`, score: Math.round(base * (learn.get(type)?.multiplier ?? 1)), expectedImpact: f.action };
     const meta = { evidence, findingType: f.type, competitors: f.competitors, signals: f.signals, priority: f.priority, priorityReason: f.priorityReason, evidenceList: f.evidence, affectedUrl: pr.path };
     let r: CreateResult;
     if (pr.kind === "CONTENT") {

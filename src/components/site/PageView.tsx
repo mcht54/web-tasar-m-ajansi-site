@@ -4,12 +4,13 @@ import { buildBreadcrumbs } from "@/lib/seo/breadcrumbs";
 import type { SiteGraph } from "@/lib/seo/graph";
 import type { AllSettings } from "@/lib/settings-schema";
 import { siteHost } from "@/lib/env";
-import { fillTokens, getBlogList, getBodyMedia, getPublishedReferences, getServiceCards, type PublicPage } from "@/lib/site/public";
+import { fillTokens, getBlogList, getBodyMedia, getPublishedReferences, type PublicPage } from "@/lib/site/public";
 import { pageJsonLd } from "@/lib/site/seo-render";
 import { db } from "@/lib/db";
 import { mediaSources, mediaUrl, type MediaVariant } from "@/lib/media/urls";
 import { CtaBand, CtaButtons, Faq, LinkGroups, PageHero, Prose, formatDate } from "./Blocks";
 import { LeadForm } from "./LeadForm";
+import { HomeView } from "./home/HomeView";
 
 type Props = {
   page: PublicPage & { faqItems: { q: string; a: string }[] };
@@ -43,7 +44,7 @@ export async function PageView({ page, settings, graph, logoUrl }: Props) {
   const title = page.h1 || page.name;
   const ld = <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd }} />;
 
-  if (page.type === "HOME") return <>{ld}<Home page={page} html={html} graph={graph} whatsapp={settings.site.whatsapp} related={related} /></>;
+  if (page.type === "HOME") return <>{ld}<HomeView page={page} html={html} graph={graph} settings={settings} related={related} /></>;
 
   if (page.type === "BLOG_POST") {
     return (
@@ -168,116 +169,6 @@ export async function PageView({ page, settings, graph, logoUrl }: Props) {
       <div className="mt-16"><Faq items={page.faqItems} /></div>
       <div className="mx-auto mt-16 max-w-6xl px-4 sm:px-6"><LinkGroups groups={groups} /></div>
       <CtaBand whatsapp={settings.site.whatsapp} />
-    </>
-  );
-}
-
-async function Home({ page, html, graph, whatsapp, related }: { page: Props["page"]; html: string; graph: SiteGraph; whatsapp: string; related: { path: string; label: string }[] }) {
-  const [services, posts] = await Promise.all([getServiceCards(), getBlogList()]);
-  const cities = graph.nodes.filter((n) => n.published && n.type === "CITY").sort((a, b) => a.crumb.localeCompare(b.crumb, "tr"));
-  const sectors = graph.nodes.filter((n) => n.published && n.type === "SECTOR").sort((a, b) => a.sortOrder - b.sortOrder);
-  const refs = await getPublishedReferences();
-  const steps = [
-    ["Keşif", "İşinizi, müşterilerinizi ve rakiplerinizi konuşuyor; hangi aramalarda görünmeniz gerektiğini belirliyoruz."],
-    ["Mimari", "Arama niyetine göre sayfa yapısı, URL'ler ve içerik planı. Her sayfanın tek bir görevi var."],
-    ["Tasarım ve geliştirme", "Önce mobil; hızlı, erişilebilir ve Google'ın ilk taramada anlayacağı HTML."],
-    ["Yayın ve ölçüm", "Search Console, sıralama takibi ve düzenli iyileştirme. Neyin neden yapıldığını görürsünüz."],
-  ];
-  return (
-    <>
-      <section className="relative overflow-hidden">
-        <div aria-hidden className="pointer-events-none absolute -right-40 -top-40 h-[520px] w-[520px] rounded-full bg-accent/15 blur-3xl" />
-        <div className="mx-auto max-w-6xl px-4 pb-16 pt-14 sm:px-6 sm:pt-24">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">SEO odaklı web tasarım</p>
-          <h1 className="mt-5 max-w-5xl font-display text-[clamp(2.8rem,1.6rem+5.4vw,6rem)] leading-[0.98] tracking-[-0.025em]">
-            {page.h1}
-          </h1>
-          {page.intro && <p className="mt-7 max-w-2xl text-lg leading-relaxed text-ink-soft sm:text-xl">{page.intro}</p>}
-          <div className="mt-9 flex flex-wrap gap-3">
-            <Link href="/teklif-al" className="rounded-full bg-accent px-6 py-3.5 font-semibold text-accent-ink transition-transform hover:-translate-y-px">Projenizi Konuşalım</Link>
-            <Link href="/teklif-al" className="rounded-full bg-ink px-6 py-3.5 font-semibold text-paper">Teklif Al</Link>
-            <Link href="/teklif-al#on-analiz" className="rounded-full border border-ink/20 px-6 py-3.5 font-semibold hover:border-ink">Ücretsiz Ön Analiz</Link>
-          </div>
-        </div>
-      </section>
-
-      <section aria-labelledby="hizmetler" className="mx-auto max-w-6xl px-4 sm:px-6">
-        <h2 id="hizmetler" className="font-display text-[clamp(2rem,1.5rem+2vw,3rem)]">Hizmetler</h2>
-        <div className="mt-8 grid gap-px overflow-hidden rounded-3xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-3">
-          {services.map((s) => (
-            <Link key={s.name} href={s.pages[0]?.path ?? "/"} className="group bg-card p-7 transition-colors hover:bg-paper">
-              <h3 className="text-xl font-semibold">{s.name}</h3>
-              {s.summary && <p className="mt-2 text-ink-soft">{s.summary}</p>}
-              <span aria-hidden className="mt-5 inline-block text-accent transition-transform group-hover:translate-x-1">→</span>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section aria-labelledby="surec" className="mx-auto mt-24 max-w-6xl px-4 sm:px-6">
-        <h2 id="surec" className="font-display text-[clamp(2rem,1.5rem+2vw,3rem)]">Süreç</h2>
-        <ol className="mt-8 grid gap-6 md:grid-cols-4">
-          {steps.map(([t, d], i) => (
-            <li key={t} className="border-t-2 border-ink pt-5">
-              <span className="font-display text-4xl text-accent">0{i + 1}</span>
-              <h3 className="mt-2 text-lg font-semibold">{t}</h3>
-              <p className="mt-2 text-ink-soft">{d}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <section className="mx-auto mt-24 max-w-6xl px-4 sm:px-6">
-        <Prose html={html} />
-      </section>
-
-      {refs.length > 0 && <References refs={refs} />}
-
-      {sectors.length > 0 && (
-        <section aria-labelledby="sektorler" className="mx-auto mt-24 max-w-6xl px-4 sm:px-6">
-          <h2 id="sektorler" className="font-display text-[clamp(2rem,1.5rem+2vw,3rem)]">Sektörler</h2>
-          <ul className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            {sectors.map((s) => (
-              <li key={s.path}>
-                <Link href={s.path} className="block rounded-2xl border border-line bg-card px-5 py-4 font-semibold hover:border-ink">{s.crumb}</Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {cities.length > 0 && (
-        <section aria-labelledby="lokasyonlar" className="mx-auto mt-24 max-w-6xl px-4 sm:px-6">
-          <h2 id="lokasyonlar" className="font-display text-[clamp(2rem,1.5rem+2vw,3rem)]">Lokasyonlar</h2>
-          <ul className="mt-8 flex flex-wrap gap-2">
-            {cities.map((c) => (
-              <li key={c.path}><Link href={c.path} className="inline-block rounded-full border border-line bg-card px-4 py-2 text-sm hover:border-ink">{c.anchor}</Link></li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {posts.length > 0 && (
-        <section aria-labelledby="rehber" className="mx-auto mt-24 max-w-6xl px-4 sm:px-6">
-          <div className="flex items-end justify-between gap-4">
-            <h2 id="rehber" className="font-display text-[clamp(2rem,1.5rem+2vw,3rem)]">Rehber</h2>
-            <Link href="/blog" className="text-sm font-semibold underline underline-offset-4">Tüm yazılar</Link>
-          </div>
-          <div className="mt-8 grid gap-5 md:grid-cols-3">
-            {posts.slice(0, 3).map((p) => (
-              <Link key={p.path} href={p.path} className="group rounded-3xl border border-line bg-card p-6 hover:border-ink">
-                {p.category && <span className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">{p.category}</span>}
-                <h3 className="mt-3 font-display text-2xl leading-tight group-hover:underline">{p.h1 || p.name}</h3>
-                {p.excerpt && <p className="mt-3 text-ink-soft">{p.excerpt}</p>}
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {related.length > 0 && <div className="mx-auto mt-16 max-w-6xl px-4 sm:px-6"><LinkGroups groups={[{ key: "related", title: "İlgili sayfalar", links: related }]} /></div>}
-      <div className="mt-24"><Faq items={page.faqItems} /></div>
-      <CtaBand whatsapp={whatsapp} />
     </>
   );
 }

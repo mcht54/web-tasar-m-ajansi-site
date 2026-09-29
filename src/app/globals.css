@@ -52,13 +52,22 @@
   --color-bad: var(--bad);
   --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-display), Georgia, serif;
+  /* MCHT Signal: tema bağımsız sahne renkleri (koyu sahneler her iki temada aynı kalır) */
+  --color-night: #0a0b0e;
+  --color-night-2: #111319;
+  --color-night-3: #1a1d25;
+  --color-snow: #f4f2ec;
+  --color-signal: #ff4d1f;
+  --color-signal-2: #ff8a4c;
+  --color-ultra: #7482ff;
+  --color-volt: #d9ff5c;
 }
 
 html { -webkit-text-size-adjust: 100%; }
 body { background: var(--paper); color: var(--ink); font-family: var(--font-sans); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .skip-link { position: absolute; left: -9999px; }
-.skip-link:focus { left: 1rem; top: 1rem; z-index: 50; background: var(--card); padding: .5rem 1rem; }
+.skip-link:focus { left: 1rem; top: 1rem; z-index: 60; color: var(--ink); background: var(--card); padding: .5rem 1rem; }
 
 /* Editoryal içerik */
 .prose { color: var(--ink-soft); font-size: 1.0625rem; line-height: 1.75; max-width: 72ch; }
@@ -87,3 +96,144 @@ body { background: var(--paper); color: var(--ink); font-family: var(--font-sans
 
 details > summary { list-style: none; cursor: pointer; }
 details > summary::-webkit-details-marker { display: none; }
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   MCHT Signal — ana sayfa deneyimi ve ortak hareket sistemi
+   İlkeler: yalnızca transform/opacity animasyonu; ekran dışındaki animasyon durur
+   ([data-live]); JS kapalıyken tüm içerik görünür (gizleme yalnızca html.motion
+   varken); prefers-reduced-motion'da tüm hareket kapanır.
+   ═════════════════════════════════════════════════════════════════════════════ */
+:root { --ease: cubic-bezier(.2,.7,.1,1); --ease-spring: cubic-bezier(.34,1.4,.64,1); }
+
+/* Açığa çıkma (Motion bileşeni html.motion ekler; ilk ekrandakiler anında is-in alır) */
+html.motion [data-reveal]:not(.is-in) { opacity: 0; transform: translate3d(0, 28px, 0); }
+html.motion [data-reveal="scale"]:not(.is-in) { transform: scale(.94); }
+html.motion [data-reveal="left"]:not(.is-in) { transform: translate3d(-36px, 0, 0); }
+html.motion [data-reveal="right"]:not(.is-in) { transform: translate3d(36px, 0, 0); }
+html.motion [data-reveal="clip"]:not(.is-in) { clip-path: inset(0 0 100% 0); opacity: 1; transform: none; }
+[data-reveal] { transition: opacity .9s var(--ease), transform .9s var(--ease), clip-path 1.1s var(--ease); transition-delay: var(--d, 0ms); }
+
+/* Yükleme koreografisi (JS gerekmez) */
+@keyframes mcht-rise { from { opacity: 0; transform: translate3d(0, 34px, 0); } to { opacity: 1; transform: none; } }
+@keyframes mcht-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mcht-float { 0%, 100% { transform: translate3d(0, 0, 0); } 50% { transform: translate3d(0, -10px, 0); } }
+@keyframes mcht-float-slow { 0%, 100% { transform: translate3d(0, 0, 0) rotate(0); } 50% { transform: translate3d(0, 8px, 0) rotate(-1deg); } }
+@keyframes mcht-marquee { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-50%, 0, 0); } }
+@keyframes mcht-blink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+@keyframes mcht-grow { from { transform: scaleY(.15); } to { transform: scaleY(1); } }
+@keyframes mcht-screens { 0%, 30% { transform: translate3d(0, 0, 0); } 36%, 63% { transform: translate3d(0, -33.333%, 0); } 69%, 96% { transform: translate3d(0, -66.666%, 0); } 100% { transform: translate3d(0, 0, 0); } }
+@keyframes mcht-caret { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+.rise { animation: mcht-rise 1s var(--ease) both; animation-delay: var(--d, 0ms); }
+.fade-in { animation: mcht-fade 1.2s var(--ease) both; animation-delay: var(--d, 0ms); }
+
+/* Sürekli animasyonlar yalnızca görünürken çalışır (Motion data-live="1" verir) */
+.float { animation: mcht-float 6s ease-in-out infinite; animation-delay: var(--d, 0ms); }
+.float-slow { animation: mcht-float-slow 9s ease-in-out infinite; animation-delay: var(--d, 0ms); }
+.marquee-track { animation: mcht-marquee 38s linear infinite; }
+.screens-track { animation: mcht-screens 13s var(--ease) infinite; }
+.blink { animation: mcht-blink 1.6s ease-in-out infinite; }
+.caret { animation: mcht-caret 1s steps(1) infinite; }
+.float, .float-slow, .marquee-track, .screens-track, .blink, .caret { animation-play-state: paused; }
+[data-live="1"] :is(.float, .float-slow, .marquee-track, .screens-track, .blink, .caret) { animation-play-state: running; }
+
+/* Fare paralaksı: Motion yalnızca fare hareket ederken --px/--py (-1..1) günceller */
+[data-parallax] { --px: 0; --py: 0; }
+.plx { transform: translate3d(calc(var(--px) * var(--depth, 10) * 1px), calc(var(--py) * var(--depth, 10) * 1px), 0); transition: transform .5s var(--ease); will-change: transform; }
+
+/* Sahne yüzeyi: ince ızgara + sinyal ışıması (görsel yük yok, tek gradient) */
+.stage { background-color: var(--color-night); color: var(--color-snow); }
+.stage-grid {
+  background-image:
+    linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);
+  background-size: 64px 64px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 20%, transparent 75%);
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 20%, transparent 75%);
+}
+.glow-signal { background: radial-gradient(closest-side, rgba(255,77,31,.42), transparent); filter: blur(10px); }
+.glow-ultra { background: radial-gradient(closest-side, rgba(116,130,255,.35), transparent); filter: blur(10px); }
+.text-gradient { background: linear-gradient(100deg, #fff 10%, #ffb393 45%, #ff4d1f 80%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hairline { border-color: rgba(255,255,255,.1); }
+
+/* Mockup ilkelleri: tarayıcı, dizüstü, telefon (yalnızca CSS; ölçü sabit → CLS yok) */
+.browser { border-radius: 14px; background: #fff; color: #14161a; box-shadow: 0 40px 80px -24px rgba(0,0,0,.55), 0 0 0 1px rgba(0,0,0,.06); overflow: hidden; }
+.browser-bar { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; background: #f1efe9; border-bottom: 1px solid #e4e0d6; }
+.browser-bar i { width: 9px; height: 9px; border-radius: 99px; background: #d9d4c8; }
+.browser-url { margin-left: 10px; flex: 1; height: 18px; border-radius: 6px; background: #fff; font-size: 10px; line-height: 18px; padding: 0 8px; color: #6b7080; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.browser.dark { background: #121419; color: #f4f2ec; box-shadow: 0 40px 90px -30px rgba(0,0,0,.8), 0 0 0 1px rgba(255,255,255,.08); }
+.browser.dark .browser-bar { background: #1a1d25; border-color: rgba(255,255,255,.07); }
+.browser.dark .browser-bar i { background: #2d313b; }
+.browser.dark .browser-url { background: #0f1115; color: #8d92a0; }
+.phone { position: relative; border-radius: 42px; padding: 11px; background: linear-gradient(145deg, #2a2d35, #0d0e12); box-shadow: 0 50px 90px -30px rgba(0,0,0,.7), inset 0 0 0 1.5px rgba(255,255,255,.12); }
+.phone-screen { position: relative; overflow: hidden; border-radius: 32px; background: #fff; color: #14161a; }
+.phone-notch { position: absolute; top: 9px; left: 50%; z-index: 3; width: 34%; height: 22px; transform: translateX(-50%); border-radius: 99px; background: #0d0e12; }
+.laptop-lid { border-radius: 16px 16px 4px 4px; padding: 10px; background: #1c1f26; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.08); }
+.laptop-base { height: 14px; margin: 0 -6%; border-radius: 0 0 18px 18px; background: linear-gradient(#2b2f38, #16181d); box-shadow: 0 30px 50px -20px rgba(0,0,0,.6); }
+.skel { border-radius: 99px; background: currentColor; opacity: .12; }
+.chip { display: inline-flex; align-items: center; gap: .4rem; border-radius: 99px; padding: .35rem .75rem; font-size: .75rem; font-weight: 600; }
+.glass { background: rgba(20,22,28,.62); border: 1px solid rgba(255,255,255,.1); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+.glass-light { background: rgba(255,255,255,.72); border: 1px solid rgba(255,255,255,.6); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+
+/* Etki akışı (Ziyaretçi → Müşteri): çizgi açığa çıkınca çizilir, düğümler sırayla yanar */
+.flow-line { stroke-dasharray: 1400; stroke-dashoffset: 1400; transition: stroke-dashoffset 2.4s var(--ease) .2s; }
+.is-in .flow-line, html:not(.motion) .flow-line { stroke-dashoffset: 0; }
+.flow-node { transition: transform .7s var(--ease-spring), background-color .5s, border-color .5s, box-shadow .5s; transition-delay: var(--d, 0ms); }
+.is-in .flow-node { border-color: rgba(255,77,31,.6); box-shadow: 0 0 0 6px rgba(255,77,31,.08); }
+
+/* Süreç: kaydırdıkça web sitesi katman katman oluşur (Motion .on ekler) */
+.build-layer { opacity: .1; transform: translate3d(0, 12px, 0) scale(.98); transition: opacity .6s var(--ease), transform .6s var(--ease); }
+.build-layer.on, html:not(.motion) .build-layer { opacity: 1; transform: none; }
+.step { transition: opacity .4s, color .4s; }
+html.motion .step:not(.on) { opacity: .35; }
+
+/* SERP (temsili): açığa çıkınca vurgulu sonuç üste yükselir */
+.serp-item { transition: transform 1.6s var(--ease) .5s, box-shadow .6s; transform: translate3d(0, calc(var(--from, 0) * 100%), 0); }
+.is-in .serp-item, html:not(.motion) .serp-item { transform: translate3d(0, calc(var(--to, 0) * 100%), 0); }
+
+/* Portföy vitrini: üzerine gelince görsel büyür, başlık kayar, "İncele" belirir */
+.show-card .show-media { transition: transform .9s var(--ease); }
+.show-card:hover .show-media, .show-card:focus-visible .show-media { transform: scale(1.035) translate3d(0, -6px, 0); }
+.show-card .show-cta { opacity: 0; transform: translate3d(0, 10px, 0) scale(.9); transition: opacity .4s var(--ease), transform .5s var(--ease-spring); }
+.show-card:hover .show-cta, .show-card:focus-visible .show-cta { opacity: 1; transform: none; }
+.show-card .show-title { transition: transform .6s var(--ease); }
+.show-card:hover .show-title { transform: translate3d(10px, 0, 0); }
+
+/* Bento: üzerine gelince kartın arayüzü değişir */
+.bento-card { transition: transform .5s var(--ease), border-color .4s, background-color .4s; }
+.bento-card:hover { transform: translate3d(0, -4px, 0); }
+.bento-card .bento-a { transition: opacity .45s var(--ease), transform .6s var(--ease); }
+.bento-card .bento-b { opacity: 0; transform: translate3d(0, 14px, 0); transition: opacity .45s var(--ease), transform .6s var(--ease); }
+.bento-card:hover .bento-a, .bento-card:focus-visible .bento-a { opacity: 0; transform: translate3d(0, -14px, 0); }
+.bento-card:hover .bento-b, .bento-card:focus-visible .bento-b { opacity: 1; transform: none; }
+@media (hover: none) { .bento-card .bento-b { opacity: 1; transform: none; position: static; } .bento-card .bento-a { display: none; } }
+
+/* Mıknatıs benzeri CTA (yalnızca CSS; imleç takibi yok) */
+.cta-magnet { transition: transform .4s var(--ease-spring), box-shadow .4s; }
+.cta-magnet:hover { transform: translate3d(0, -3px, 0) scale(1.03); box-shadow: 0 18px 40px -12px rgba(255,77,31,.6); }
+.cta-magnet .arrow { transition: transform .35s var(--ease-spring); }
+.cta-magnet:hover .arrow { transform: translate3d(4px, 0, 0); }
+
+/* Kaydırma bağlantılı animasyon (destekleyen tarayıcıda; desteklemeyen statik kalır) */
+@supports (animation-timeline: view()) {
+  @keyframes mcht-tilt-in { from { transform: perspective(1400px) rotateX(18deg) scale(.92); } to { transform: perspective(1400px) rotateX(0) scale(1); } }
+  @keyframes mcht-phone-turn { from { transform: rotate(-9deg) translate3d(0, 40px, 0); } to { transform: rotate(4deg) translate3d(0, -30px, 0); } }
+  @keyframes mcht-drift { from { transform: translate3d(0, 60px, 0); } to { transform: translate3d(0, -60px, 0); } }
+  .sd-tilt { animation: mcht-tilt-in linear both; animation-timeline: view(); animation-range: entry 0% cover 45%; }
+  .sd-phone { animation: mcht-phone-turn linear both; animation-timeline: view(); animation-range: cover 0% cover 100%; }
+  .sd-drift { animation: mcht-drift linear both; animation-timeline: view(); animation-range: cover 0% cover 100%; }
+}
+
+/* Header: kaydırınca daralan yüzen hap (HeaderShell data-scrolled verir) */
+.nav-pill { background-color: rgba(12,13,17,.84); transition: max-width .5s var(--ease), background-color .4s, box-shadow .4s, padding .4s; }
+[data-scrolled="1"] .nav-pill { max-width: 60rem; background-color: rgba(10,11,14,.88); box-shadow: 0 18px 40px -18px rgba(0,0,0,.6); }
+
+@media (max-width: 767px) {
+  .plx { transform: none !important; }
+  .float-slow { animation: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+  html.motion [data-reveal]:not(.is-in) { opacity: 1; transform: none; clip-path: none; }
+  .plx { transform: none !important; }
+  .serp-item { transform: translate3d(0, calc(var(--to, 0) * 100%), 0) !important; }
+}

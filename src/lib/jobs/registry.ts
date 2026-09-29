@@ -17,6 +17,8 @@ import { runCompletenessScan } from "../content/completeness";
 import { competitorDiscovery, crawlDueCompetitors, runCompetitorOpportunities } from "../competitors/jobs";
 import { enqueueJob } from "./runner";
 import { refreshPublic } from "../admin/pages";
+import { cycleHooks, cycleMessage, runAutopilotCycle } from "../autopilot/cycle";
+import { runCleanup } from "../maintenance/cleanup";
 
 /** Son 26 saatte gerçekten değişen (alan logu olan) URL'leri IndexNow ile bildirir. */
 async function indexNowRecent() {
@@ -86,6 +88,7 @@ registerJob("autopilot", async (by) => {
 // hataları işi düşürmez (her biri kendi kaydında yeniden denenir / başarısız olur).
 registerJob("auto-apply-proposals", async () => {
   const s = await runAutoApply();
+  if (s.off) return { status: "skipped", message: `${s.off}${s.recovered ? `, yarıda kalan ${s.recovered}` : ""}${s.expiredManual ? ` · süresi dolmuş ${s.expiredManual} öneri elle onay bekliyor` : ""}`, stats: s };
   const parts = [`süresi dolan ${s.due}`, `uygulanan ${s.applied}`, `yeniden denenecek ${s.retry}`, `başarısız ${s.failed}`, s.skipped ? `atlanan ${s.skipped}` : "", s.recovered ? `yarıda kalan ${s.recovered}` : "", s.expiredManual ? `süresi dolmuş ama insan onayı gereken ${s.expiredManual}` : ""].filter(Boolean);
   if (s.applied) refreshPublic();
   return { status: s.due || s.recovered ? "ok" : "skipped", message: parts.join(", "), stats: s };
@@ -125,6 +128,22 @@ registerJob("page-completeness-scan", async () => {
   const s = await runCompletenessScan();
   const created = Object.entries(s.created).map(([k, v]) => `${k} ${v}`).join(", ") || "yeni öneri yok";
   return { status: (s.items.length ? "ok" : "skipped") as "ok" | "skipped", message: s.skippedReason ?? `${s.pages} sayfada ${s.gaps} eksik alan · öneriler: ${created}`, stats: s };
+});
+// Sürekli otonom döngü: biter, özetini kaydeder; sonrakini zamanlayıcı başlatır (cycleHours).
+// Bir aşama hatası diğerlerini durdurmaz ama iş hata olarak kaydedilir → kuyruk yeniden dener.
+registerJob("autopilot-cycle", async () => {
+  const s = await runAutopilotCycle(cycleHooks.defaults);
+  if (s.outcome === "OFF") return { status: "skipped", message: cycleMessage(s), stats: s };
+  if (s.errors) throw new Error(`${cycleMessage(s)} | ${s.steps.filter((x) => x.status === "error").map((x) => `${x.name}: ${x.message}`).join(" | ")} | aşamalar: ${s.steps.map((x) => `${x.name}=${x.status}`).join(", ")}`);
+  if (s.autoApplied) refreshPublic();
+  return { status: "ok", message: cycleMessage(s), stats: s };
+});
+// Merkezi temizlik: 5 günden eski, referans edilmeyen geçici veri (bkz. maintenance/cleanup.ts)
+registerJob("cleanup", async () => {
+  const s = await runCleanup();
+  const message = `${s.total} kayıt/dosya silindi · ${s.steps.map((x) => `${x.name}: ${x.error ? `HATA — ${x.error}` : x.deleted}`).join(" · ")}`;
+  if (s.errors && s.errors === s.steps.length) throw new Error(message);
+  return { status: s.total ? "ok" : "skipped", message, stats: s };
 });
 registerJob("alarms", async () => {
   const r = await runAlarms();

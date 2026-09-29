@@ -19,6 +19,7 @@ import { Badge, Card, Notice, PageTitle, Stat, Table, fmtDate } from "@/componen
 import { JobButton } from "@/components/admin/JobButton";
 import { applyBlocker } from "@/lib/autopilot/execute";
 import { approveAutopilotAction, rejectAutopilotAction, rollbackAutopilotAction } from "./actions";
+import type { CycleSummary } from "@/lib/autopilot/cycle";
 
 export const metadata = { title: "SEO Otopilot" };
 
@@ -103,12 +104,14 @@ export default async function Autopilot(props: PageProps<"/yonetim/autopilot">) 
       <PageTitle
         title="SEO Otopilot"
         desc="Türkiye geneli otonom SEO motoru: her hafta ANALİZ → KARAR → UYGULA → ÖLÇ → ÖĞREN. Sistem en değerli 10 işlemi kendisi seçer; güvenli olanları kalite kapısından geçirip uygular, riskli olanları onaya bırakır. Tüm değişiklikler sürüm geçmişine yazılır ve geri alınabilir."
-        actions={<JobButton kind="autopilot" back="/yonetim/autopilot" />}
+        actions={<><JobButton kind="autopilot-cycle" back="/yonetim/autopilot" /><JobButton kind="autopilot" back="/yonetim/autopilot" /></>}
       />
       {typeof sp.ok === "string" && <div className="mb-4"><Notice tone="ok">{sp.ok}</Notice></div>}
       {typeof sp.hata === "string" && <div className="mb-4"><Notice tone="bad">{sp.hata}</Notice></div>}
-      {typeof sp.is === "string" && <div className="mb-4"><Notice>İş arka planda başlatıldı; birkaç dakika sonra sayfayı yenileyin.</Notice></div>}
+      {typeof sp.is === "string" && <div className="mb-4"><Notice>{sp.kuyruk === "var" ? "Bu iş zaten kuyrukta veya çalışıyor; ikinci kez başlatılmadı." : sp.kuyruk === "yeni" ? "İş kuyruğa alındı; worker ilk turunda (yaklaşık 1–2 dakika) başlatır." : "İş arka planda başlatıldı; birkaç dakika sonra sayfayı yenileyin."}</Notice></div>}
       {!gsc && <div className="mb-4"><Notice tone="warn"><b>{NO_DATA_TEXT}</b> Search Console bağlanana kadar sistem yalnızca site içi sinyallerle (eksik meta, iç link, kırık link, içerik kapsamı) çalışır; pozisyon, tıklama ve trend gösterilmez.</Notice></div>}
+
+      <CycleStatus enabled={settings.autopilot.enabled} cycleHours={settings.autopilot.cycleHours} />
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Stat label="Son çalıştırma" value={run ? run.weekKey : "—"} hint={run ? `${fmtDate(run.startedAt, true)} · ${run.status === "ok" ? "tamam" : run.status === "partial" ? "kısmi (hatalı aşama var)" : run.status}` : "Henüz çalışmadı"} tone={run?.status === "partial" ? "warn" : undefined} />
@@ -182,6 +185,50 @@ async function HistoryTab() {
         {rows.map((a) => <ActionRow key={a.id} a={a} tab="gecmis" />)}
       </Table>
     </Card>
+  );
+}
+
+/** Sürekli döngünün canlı durumu: son cycle, çalışan iş, fırsatlar, 48 saat, otomatik uygulananlar, ölçüm, hata, sonraki cycle. */
+const daysAgo = (n: number) => new Date(Date.now() - n * 86400_000);
+
+async function CycleStatus({ enabled, cycleHours }: { enabled: boolean; cycleHours: number }) {
+  const weekAgo = daysAgo(7);
+  const nowTs = daysAgo(0);
+  const [last, queued, running, pending48, autoApplied, lastMeasured, lastError] = await Promise.all([
+    db.jobRun.findFirst({ where: { kind: "autopilot-cycle", status: { not: "queued" } }, orderBy: { startedAt: "desc" } }),
+    db.jobRun.findFirst({ where: { kind: "autopilot-cycle", status: "queued" }, orderBy: { startedAt: "asc" } }),
+    db.jobRun.findFirst({ where: { status: "running" }, orderBy: { startedAt: "desc" } }),
+    db.autopilotAction.count({ where: { status: "pending_approval" } }),
+    db.autopilotAction.count({ where: { status: "applied", appliedVia: { in: ["auto_48h", "autopilot"] }, appliedAt: { gte: weekAgo } } }),
+    db.experiment.findFirst({ where: { outcome: { not: null } }, orderBy: { appliedAt: "desc" }, include: { action: { select: { title: true } } } }),
+    db.jobRun.findFirst({ where: { status: "error", kind: { in: ["autopilot-cycle", "autopilot", "auto-apply-proposals", "competitor-crawl", "daily"] } }, orderBy: { startedAt: "desc" } }),
+  ]);
+  const s = (last?.stats ?? null) as CycleSummary | null;
+  const next = !enabled ? "—" : queued ? (queued.runAfter && queued.runAfter > nowTs ? fmtDate(queued.runAfter, true) : "kuyrukta (worker bekleniyor)") : last ? fmtDate(new Date(last.startedAt.getTime() + cycleHours * 3600_000), true) : "zamanlayıcının ilk turunda";
+  const measured = lastMeasured?.result as { summary?: string } | null;
+  return (
+    <div className={`mb-6 rounded-2xl border p-5 ${enabled ? "border-ok/40 bg-ok/5" : "border-line bg-card"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-lg font-semibold">{enabled ? "🟢 AUTOPILOT ÇALIŞIYOR" : "⚪ AUTOPILOT KAPALI"}</p>
+        <p className="text-xs text-muted">{enabled ? `Her ${cycleHours} saatte bir cycle · 48 saat içinde onaylanmayan güvenli öneriler otomatik uygulanır` : "Cycle çalışmaz, otomatik uygulama yapılmaz; elle onay/red çalışır"} · <Link href="/yonetim/ayarlar?sekme=otopilot" className="underline">Ayarlar</Link></p>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat label="Son cycle" value={last ? (s?.outcome === "NO_OPPORTUNITY" ? "NO_OPPORTUNITY" : last.status === "ok" ? "tamam" : last.status === "error" ? "hata" : last.status) : "—"} hint={last ? `${fmtDate(last.startedAt, true)}${s ? ` · ${s.proposals.total} yeni öneri` : ""}` : "Henüz çalışmadı"} tone={last?.status === "error" ? "bad" : undefined} />
+        <Stat label="Şu anda çalışan iş" value={running ? running.kind : "yok"} hint={running ? `başladı ${fmtDate(running.startedAt, true)}` : undefined} />
+        <Stat label="Bulunan fırsatlar" value={s ? s.opportunities : "—"} hint="son cycle, birleşik fırsat motoru" />
+        <Stat label="Bekleyen 48 saat önerisi" value={pending48} tone={pending48 ? "warn" : undefined} hint={<Link href="/yonetim/oneriler" className="underline">Önerileri incele</Link>} />
+        <Stat label="Otomatik uygulananlar" value={autoApplied} hint="son 7 gün" />
+        <Stat label="Son ölçüm" value={lastMeasured ? lastMeasured.outcome ? OUTCOME[lastMeasured.outcome] ?? lastMeasured.outcome : "ölçülüyor" : "—"} hint={lastMeasured ? `${lastMeasured.action?.title ?? lastMeasured.type}: ${measured?.summary ?? ""}`.slice(0, 140) : "7/14/28. günlerde ölçülür"} />
+        <Stat label="Son hata" value={lastError ? lastError.kind : "yok"} hint={lastError ? `${fmtDate(lastError.startedAt, true)} · ${(lastError.message ?? "").slice(0, 140)}` : undefined} tone={lastError ? "bad" : undefined} />
+        <Stat label="Sonraki cycle" value={next} />
+      </div>
+      {s?.steps?.length ? (
+        <details className="mt-3 text-xs">
+          <summary className="cursor-pointer text-muted">Son cycle adımları</summary>
+          <ol className="mt-2 space-y-1">{s.steps.map((x, i) => <li key={i}><Badge tone={x.status === "ok" ? "ok" : x.status === "error" ? "bad" : "muted"}>{x.status}</Badge> <b>{x.name}</b> — {x.message}</li>)}</ol>
+        </details>
+      ) : null}
+    </div>
   );
 }
 

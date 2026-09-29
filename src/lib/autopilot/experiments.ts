@@ -8,9 +8,17 @@ import { type Metrics, addDays, lastDataDay, pageMetrics, queryMetrics } from ".
 
 export const INTERIM_MIN_DAYS = 7; // erken gözlem
 export const FINAL_DAYS = 28; // nihai değerlendirme
+export const CHECKPOINTS = [7, 14, 28] as const; // ölçüm noktaları (uygulama + 3 gün gecikmeden sonra)
+const LAG_DAYS = 3; // Search Console gecikmesi
 const MIN_IMPRESSIONS = 100; // her iki pencerede
 
 type Snapshot = { page: Metrics; query: Metrics };
+type Checkpoint = { day: number; window: { from: string; to: string }; page: Metrics; query: Metrics; outcome: Outcome; summary: string; measuredAt: string };
+
+/** Ölçüm planı: her noktanın ölçülebileceği en erken gün (veri gecikmesi dahil). */
+export function measurementPlan(appliedAt: Date) {
+  return CHECKPOINTS.map((d) => ({ day: d, measureAfter: addDays(appliedAt, LAG_DAYS + d).toISOString().slice(0, 10) }));
+}
 
 export async function baselineFor(pagePath: string, query: string | null, appliedAt: Date): Promise<Snapshot> {
   const w = { from: addDays(appliedAt, -28), to: addDays(appliedAt, -1) };
@@ -19,7 +27,8 @@ export async function baselineFor(pagePath: string, query: string | null, applie
 
 export async function startExperiment(a: { actionId: string; pageId: string; pagePath: string; type: string; query: string | null; appliedAt: Date }) {
   const baseline = await baselineFor(a.pagePath, a.query, a.appliedAt);
-  return db.experiment.create({ data: { ...a, baseline: baseline as object, note: baseline.page ? null : "Uygulama öncesi Search Console verisi yok — sonuç ölçülemeyebilir" } });
+  // Ölçüm planı tabana yazılır (sonuç alanı yalnızca gerçek ölçümle dolar)
+  return db.experiment.create({ data: { ...a, baseline: { ...baseline, plan: measurementPlan(a.appliedAt) } as object, note: baseline.page ? null : "Uygulama öncesi Search Console verisi yok — sonuç ölçülemeyebilir" } });
 }
 
 export type Outcome = "positive" | "neutral" | "negative" | "insufficient";
@@ -64,10 +73,21 @@ export async function evaluateExperiments(now = new Date()) {
     const focusAfter = e.query && after.query ? after.query : after.page;
     const j = judge(e.type, focusBase, focusAfter);
     const isFinal = lastDay >= end;
+    // 7 / 14 / 28 gün noktaları: verisi tamamlanan her nokta bir kez ölçülür ve saklanır
+    const prev = (e.result as { checkpoints?: Checkpoint[] } | null)?.checkpoints ?? [];
+    const checkpoints = [...prev];
+    for (const d of CHECKPOINTS) {
+      const cpTo = addDays(e.appliedAt, LAG_DAYS + d - 1);
+      if (checkpoints.some((c) => c.day === d) || lastDay < cpTo) continue;
+      const cw = { from, to: cpTo };
+      const m = { page: await pageMetrics(e.pagePath, cw), query: e.query ? await queryMetrics(e.query, cw) : null };
+      const cj = judge(e.type, focusBase, e.query && m.query ? m.query : m.page);
+      checkpoints.push({ day: d, window: { from: from.toISOString().slice(0, 10), to: cpTo.toISOString().slice(0, 10) }, ...m, outcome: cj.outcome, summary: cj.summary, measuredAt: now.toISOString() });
+    }
     await db.experiment.update({
       where: { id: e.id },
       data: {
-        result: { ...after, window: { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) }, summary: j.summary, interim: !isFinal } as object,
+        result: { ...after, window: { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) }, summary: j.summary, interim: !isFinal, checkpoints } as object,
         outcome: j.outcome,
         ...(isFinal ? { status: "evaluated", evaluatedAt: now } : {}),
       },

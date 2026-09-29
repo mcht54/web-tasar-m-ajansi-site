@@ -19,7 +19,6 @@ import { checkSitemap } from "../seo/sitemap-check";
 import { submitIndexNow } from "../seo/indexnow";
 import { refreshPublic } from "../admin/pages";
 import { notifyAppRevalidate } from "../jobs/notify";
-import { claudeAvailable } from "../ai/claude";
 import { sendMail } from "../email/send";
 import { discoverKeywords } from "./discovery";
 import { ensureTopicClusters } from "./clusters";
@@ -57,7 +56,7 @@ export function weekKey(d = new Date()): string {
 }
 
 export type RunOptions = {
-  trigger?: "schedule" | "manual" | "cli" | "test";
+  trigger?: "schedule" | "manual" | "cli" | "test" | "cycle";
   fetchImpl?: typeof fetch;
   skipStages?: number[]; // test/geliştirme: ör. canlı tarama
   sendEmail?: boolean;
@@ -105,7 +104,7 @@ export async function runAutopilot(opts: RunOptions = {}) {
   });
   await stage(2, async () => {
     const r = await discoverKeywords();
-    return { message: `${r.seeded} çekirdek kelime, ${r.added.length} yeni keşif, ${r.updated} güncelleme` };
+    return { message: `${r.seeded} aktif seed kelime, ${r.added.length} yeni keşif, ${r.updated} güncelleme` };
   });
   await stage(3, async () => {
     await ensureTopicClusters();
@@ -230,7 +229,7 @@ export async function runAutopilot(opts: RunOptions = {}) {
     return { message: `${ctx.selected.length} işlem seçildi (haftalık otomatik bütçe ${budget}/${ap.maxChangesPerWeek})` };
   });
   await stage(14, async () => ({
-    message: claudeAvailable() ? "Yapay zekâ + kural tabanlı alternatifler üretilecek" : "Yapay zekâ anahtarı yok: yalnızca kural tabanlı ve sayfanın kendi metninden üretim (içerik genişletme onaya kalır)",
+    message: "Harici yapay zekâ kullanılmaz: içerik motoru yalnızca sitedeki gerçek bilgiyle (sayfalar, SSS, hizmet/sektör, Search Console, rakip konu sinyali) üretir; bilgi yoksa üretmez",
   }));
   await stage(15, async () => {
     const r = await db.autopilotAction.groupBy({ by: ["risk"], where: { runId: run.id }, _count: true });

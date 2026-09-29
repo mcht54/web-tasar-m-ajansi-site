@@ -176,9 +176,10 @@ export async function testEmailAction() {
 export async function saveAutopilotAction(f: FormData) {
   const user = await requireUser("settings");
   await persist("autopilot", {
-    mode: str(f, "mode") || "AUTONOMOUS", enabled: true, autoApplySafe: f.get("autoApplySafe") === "on", autoApplyControlled: f.get("autoApplyControlled") === "on",
+    mode: str(f, "mode") || "AUTONOMOUS", enabled: f.get("enabled") === "on", autoApplySafe: f.get("autoApplySafe") === "on", autoApplyControlled: f.get("autoApplyControlled") === "on",
     maxChangesPerWeek: Number(f.get("maxChangesPerWeek")), maxNewPagesPerWeek: Number(f.get("maxNewPagesPerWeek") ?? 3),
     approvalWindowHours: Number(f.get("approvalWindowHours") ?? 48),
+    cycleHours: Number(f.get("cycleHours") ?? 6), maxActionsPerCycle: Number(f.get("maxActionsPerCycle") ?? 3), instantApply: f.get("instantApply") === "on",
   }, "otopilot", user.id);
 }
 

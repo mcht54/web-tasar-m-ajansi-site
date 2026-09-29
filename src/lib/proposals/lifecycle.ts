@@ -25,6 +25,7 @@ import { AUTOPILOT_USER, prepareAction, rollbackAction, type ExecOutcome, type F
 import { newPageGate, publishNewPage, rollbackNewPage } from "../autopilot/new-page";
 import { startExperiment } from "../autopilot/experiments";
 import { getSettingsFresh } from "../settings";
+import { autoApplyAllowed, instantApplyOn } from "../settings-schema";
 import { siteUrl } from "../env";
 import { extractMarkdown } from "../text/markdown";
 import { wordCount } from "../text/analyze";
@@ -90,7 +91,12 @@ export async function duplicateReason(key: string, now = clock.now()): Promise<{
 }
 
 /** Öneriyi oluşturur ve hemen hazırlar; sonuç: pending_approval | blocked | needs_approval | skipped | failed. */
-export async function createProposal(p: NewProposal, opts: { model: string; windowHours: number }): Promise<CreateResult> {
+/**
+ * `keepWindow`: çağıran modül onay penceresini ZORUNLU tutar (ör. rakip verisine dayalı öneriler:
+ * dış kaynaklı sinyal olduğu için her zaman insan itiraz süresi tanınır). Bu durumda tam otomatik mod
+ * (instantApply) pencereyi sıfırlamaz; süre dolunca mevcut 48 saat kuralıyla otomatik uygulanır.
+ */
+export async function createProposal(p: NewProposal, opts: { model: string; windowHours: number; keepWindow?: boolean }): Promise<CreateResult> {
   const now = clock.now();
   const dup = await duplicateReason(p.key, now);
   if (dup) return { id: dup.id, status: "duplicate", note: dup.note, duplicate: true };
@@ -103,10 +109,10 @@ export async function createProposal(p: NewProposal, opts: { model: string; wind
     },
   });
   const r = await prepareAction(row.id, { model: opts.model });
-  return finalizePrepared(row.id, p, r, opts.windowHours, now);
+  return finalizePrepared(row.id, p, r, opts.windowHours, now, opts.keepWindow ?? false);
 }
 
-async function finalizePrepared(id: string, p: NewProposal, r: ExecOutcome, windowHours: number, now: Date): Promise<CreateResult> {
+async function finalizePrepared(id: string, p: NewProposal, r: ExecOutcome, windowHours: number, now: Date, keepWindow: boolean): Promise<CreateResult> {
   if (r.status === "prepared" && hasChanges(r.changes)) {
     const changes = r.changes!;
     const fingerprint = fingerprintOf(p.key, changes);
@@ -116,14 +122,18 @@ async function finalizePrepared(id: string, p: NewProposal, r: ExecOutcome, wind
     const pages = await db.page.findMany({ where: { id: { in: changes.pages.map((x) => x.pageId) } } });
     const beforeSnapshot = { pages: pages.map((pg) => ({ pageId: pg.id, path: pg.path, snapshot: snapshotOf(pg as unknown as Record<string, unknown>) })) };
     const why = !p.allowAuto ? p.noAutoReason ?? "Mod/ayar/haftalık bütçe otomatik uygulamaya izin vermiyor" : blocker ?? r.noAuto ?? null;
+    // Tam otomatik (Autopilot AÇIK + AUTONOMOUS + instantApply): otomatik uygulanabilir öneri pencere
+    // beklemez; süresi hemen dolar ve mevcut uygulama hattı (aynı güvenlik kontrolleri) ilk turda uygular
+    const instant = autoApply && !keepWindow && instantApplyOn((await getSettingsFresh()).autopilot);
+    const expiresAt = expiryFor(now, instant ? 0 : windowHours);
     await db.autopilotAction.update({
       where: { id },
       data: {
         status: "pending_approval", proposedChanges: changes as object, beforeSnapshot: beforeSnapshot as object, fingerprint, riskLevel, autoApply,
-        expiresAt: expiryFor(now, windowHours), qualityNotes: [r.note, autoApply ? null : `Otomatik uygulanmaz: ${why}`].filter(Boolean).join(" · "),
+        expiresAt, qualityNotes: [r.note, autoApply ? (instant ? "Tam otomatik: onay beklemeden uygulanır" : null) : `Otomatik uygulanmaz: ${why}`].filter(Boolean).join(" · "),
       },
     });
-    await db.auditLog.create({ data: { action: "proposal.create", entity: "autopilotAction", entityId: id, detail: { type: p.type, autoApply, riskLevel, expiresAt: expiryFor(now, windowHours).toISOString() } } });
+    await db.auditLog.create({ data: { action: "proposal.create", entity: "autopilotAction", entityId: id, detail: { type: p.type, autoApply, instant, riskLevel, expiresAt: expiresAt.toISOString() } } });
     return { id, status: "pending_approval", note: r.note };
   }
   // Uygulanabilir değişiklik üretilemedi: gerçek neden gösterilir, düğme/geri sayım yok
@@ -526,7 +536,7 @@ export async function rollbackProposal(user: SessionUser, id: string): Promise<s
 
 // ─── Zamanlanmış otomatik uygulama ───────────────────────────────────────────
 
-export type AutoApplySummary = { due: number; applied: number; failed: number; retry: number; skipped: number; recovered: number; expiredManual: number };
+export type AutoApplySummary = { due: number; applied: number; failed: number; retry: number; skipped: number; recovered: number; expiredManual: number; off?: string };
 
 /**
  * Süresi dolan ve otomatik uygulamaya uygun önerileri uygular. İdempotent: aynı öneriyi
@@ -539,6 +549,12 @@ export async function runAutoApply(opts: { now?: Date; fetchImpl?: typeof fetch 
     where: { status: "applying", nextAttemptAt: { lt: now } },
     data: { status: "failed", error: "Uygulama yarıda kaldı (süreç kesilmiş olabilir); sayfayı sürüm geçmişinden kontrol edin", nextAttemptAt: null },
   });
+  // Autopilot KAPALI (veya AUTONOMOUS değil): süresi dolan öneri otomatik uygulanmaz; elle onay/red aynen çalışır
+  const ap = (await getSettingsFresh()).autopilot;
+  if (!autoApplyAllowed(ap)) {
+    const waiting = await db.autopilotAction.count({ where: { status: "pending_approval", expiresAt: { lte: now } } });
+    return { due: 0, applied: 0, failed: 0, retry: 0, skipped: 0, recovered: stale.count, expiredManual: waiting, off: !ap.enabled ? "Autopilot kapalı: otomatik uygulama yapılmadı" : `${ap.mode} modu: otomatik uygulama yalnızca AUTONOMOUS modda` };
+  }
   const due = await db.autopilotAction.findMany({
     where: { status: "pending_approval", autoApply: true, expiresAt: { lte: now }, riskLevel: { in: ["LOW", "MEDIUM"] }, OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }] },
     orderBy: { expiresAt: "asc" },

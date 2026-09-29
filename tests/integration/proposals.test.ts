@@ -41,7 +41,7 @@ async function pending(o: { risk?: string; riskLevel?: string; autoApply?: boole
 beforeAll(async () => {
   const u = await db.user.upsert({ where: { email: "proposals@example.com" }, create: { email: "proposals@example.com", name: "Öneri Testi", role: "ADMIN", passwordHash: "x" }, update: {} });
   admin = { id: u.id, email: u.email, name: u.name, role: "ADMIN", sessionId: "s" };
-  await saveSetting("autopilot", {});
+  await saveSetting("autopilot", { instantApply: false });
   original = (await page()).metaDescription;
   aiHooks.available = () => false;
 });

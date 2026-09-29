@@ -6,10 +6,8 @@ import "server-only";
 import { db } from "../db";
 import { siteUrl } from "../env";
 import { escapeHtml } from "../text/markdown";
-import { normalizeKeyword } from "../text/slug";
 import { locationDemand } from "../seo/location-demand";
 import { getSettingsFresh } from "../settings";
-import { SEED_KEYWORDS } from "./discovery";
 import { ACTION_LABELS, type ActionType } from "./decide";
 import { addDays, lastDataDay, pct } from "./metrics";
 import { STATUS_LABELS, overallScore, type HealthCategory, type SeoHealth } from "./health";
@@ -123,7 +121,7 @@ export async function buildWeeklyReport(opts: { runId?: string | null; plan?: Pl
     .sort((a, b) => b.w - a.w).slice(0, 15).map((x) => x.r);
 
   // Türkiye geneli web tasarım kelimeleri: çekirdek + keşfedilen (lokasyonsuz konu kümeleri)
-  const seedSet = new Set(SEED_KEYWORDS.map(normalizeKeyword));
+  const seedSet = new Set(kws.filter((k) => k.source === "seed").map((k) => k.normalized));
   const coreKws = kws.filter((k) => seedSet.has(k.normalized) || (k.source === "discovered" && k.cluster?.kind === "TOPIC" && !k.provinceId));
   report.core = coreKws
     .map((k) => ({ ...row(k.normalized), query: k.phrase, source: seedSet.has(k.normalized) ? "çekirdek" : "keşfedilen", noData: !qNow.has(k.normalized) && !qPrev.has(k.normalized) }))

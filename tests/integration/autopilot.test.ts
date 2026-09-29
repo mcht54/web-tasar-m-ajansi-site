@@ -87,7 +87,7 @@ const realHooks = { ...aiHooks };
 beforeAll(async () => {
   await cleanAll();
   await saveSetting("email", {});
-  await saveSetting("autopilot", {});
+  await saveSetting("autopilot", { instantApply: false });
   aiHooks.available = () => false; // testte gerçek API çağrısı yok
 });
 
@@ -140,7 +140,7 @@ describe("Search Console verisiyle haftalık döngü", () => {
       expect(acts.some((a) => a.qualityNotes?.includes("Haftalık otomatik değişiklik sınırı doldu"))).toBe(true);
       await db.autopilotAction.deleteMany({ where: { runId: blocked.id } });
     }
-    await saveSetting("autopilot", { maxChangesPerWeek: 40 });
+    await saveSetting("autopilot", { maxChangesPerWeek: 40, instantApply: false });
     const r = await runAutopilot({ trigger: "test", fetchImpl: fakeWorld(), skipStages: [6] });
     runId = r.id;
     expect(r.stages.find((s) => s.n === 1)?.status, r.stages[0].message).toBe("ok");
@@ -306,16 +306,19 @@ describe("zamanlayıcı", () => {
     await db.jobRun.deleteMany({ where: { kind: { in: ["alarms"] } } });
     await db.emailLog.deleteMany({ where: { kind: "weekly" } });
     await db.autopilotRun.deleteMany({ where: { trigger: "schedule" } });
+    await db.jobRun.deleteMany({ where: { kind: "autopilot-cycle" } });
     // Pazar 23:30 İstanbul = 20:30 UTC
     const sunday = new Date("2026-09-27T20:30:00Z");
     expect(await dueJobs(sunday)).toContain("weekly-email");
-    expect(await dueJobs(sunday)).toContain("autopilot"); // ajan artık her gece çalışır
+    // Autopilot açık: 23 aşamalı ajan artık sürekli cycle'ın içinde çalışır (ayrıca planlanmaz)
+    expect(await dueJobs(sunday)).toContain("autopilot-cycle");
+    expect(await dueJobs(sunday)).not.toContain("autopilot");
     expect(await dueJobs(sunday)).toContain("alarms");
-    // Cumartesi: haftalık rapor yok, gece ajan döngüsü var
+    // Cumartesi: haftalık rapor yok, cycle var
     const saturday = await dueJobs(new Date("2026-09-26T20:30:00Z"));
     expect(saturday).not.toContain("weekly-email");
-    expect(saturday).toContain("autopilot");
-    // Gece 02:00'den önce (İstanbul 01:30 = 22:30 UTC önceki gün) ajan döngüsü başlamaz
+    expect(saturday).toContain("autopilot-cycle");
+    // Ayrı gece ajan işi planlanmaz (cycle kapsar)
     expect(await dueJobs(new Date("2026-09-26T22:30:00Z"))).not.toContain("autopilot");
   });
 });
