@@ -1,0 +1,110 @@
+# PRODUCTION TANILAMA — YALNIZCA OKUMA, YALNIZCA ELLE.
+#
+# Ne yapar: mevcut deploy erişimiyle (aynı secret'lar: VPS_HOST, VPS_USER, VPS_PORT, VPS_PROJECT_PATH,
+# VPS_SSH_KEY, VPS_KNOWN_HOSTS) sunucuya bağlanır ve:
+#   • çalışan commit + container imajlarını okur (git rev-parse, docker inspect),
+#   • scripts/diagnostics/prod-readonly.sql'i veritabanı container'ında psql ile çalıştırır.
+# Ne YAPMAZ: deploy, migration, restart, job çalıştırma, veri yazma.
+#   • SQL'de yazma/DDL anahtar kelimesi varsa iş başlamadan durur,
+#   • oturum default_transaction_read_only=on + BEGIN READ ONLY + ROLLBACK (PostgreSQL yazmayı reddeder).
+# Gizlilik: depo HERKESE AÇIK. Çıktı loga yazılmaz; deploy SSH anahtarının AÇIK anahtarına (age, ssh-ed25519
+# alıcısı) şifrelenip 1 günlük artifact olarak yüklenir. Yalnızca o anahtarın sahibi açabilir:
+#   age -d -i <özel-anahtar> prod-diagnostics.txt.age > prod-diagnostics.txt
+# Logda yalnızca bölüm başına satır sayıları ve alıcı anahtarın parmak izi görünür.
+
+name: Production tanılama (salt okuma)
+
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "Deploy sonrası başlangıç (UTC, YYYY-MM-DD HH:MM:SS)"
+        required: true
+        default: "2026-09-29 23:30:00"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: webtasarimajansi-prod-diagnostics
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Salt okuma tanılama
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+      VPS_PROJECT_PATH: ${{ secrets.VPS_PROJECT_PATH || '/opt/mcht/webtasarimajansi' }}
+      SINCE: ${{ inputs.since }}
+      SQL_FILE: scripts/diagnostics/prod-readonly.sql
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Girdi ve SQL güvenlik denetimi
+        run: |
+          set -euo pipefail
+          [[ "$SINCE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$ ]] || { echo "since biçimi geçersiz"; exit 1; }
+          case "$VPS_PROJECT_PATH" in /*/webtasarimajansi) ;; *) echo "VPS_PROJECT_PATH */webtasarimajansi olmalı"; exit 1;; esac
+          test -n "$VPS_HOST" && test -n "$VPS_USER" || { echo "VPS_HOST / VPS_USER secret'ları eksik"; exit 1; }
+          # Yorumlar ve \echo satırları çıkarıldıktan sonra yazma/DDL anahtar kelimesi olmamalı
+          body=$(sed -e 's/--.*$//' -e '/^\\echo/d' "$SQL_FILE")
+          if printf '%s' "$body" | grep -Eiq '\b(insert|update|delete|truncate|drop|alter|create|grant|revoke|copy|vacuum|reindex|cluster|comment|lock|call|merge|refresh|import|listen|notify|prepare|execute|discard|security)\b'; then
+            echo "SQL'de yazma/DDL anahtar kelimesi bulundu — çalıştırılmadı"; exit 1
+          fi
+          grep -q '^BEGIN READ ONLY;' "$SQL_FILE" && grep -q '^ROLLBACK;' "$SQL_FILE" || { echo "READ ONLY / ROLLBACK eksik"; exit 1; }
+          echo "SQL denetimi geçti (yalnızca SELECT, READ ONLY + ROLLBACK)"
+
+      - name: SSH (mevcut deploy anahtarı, sıkı host doğrulaması)
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/diag_key && chmod 600 ~/.ssh/diag_key
+          test -n "$VPS_KNOWN_HOSTS" || { echo "VPS_KNOWN_HOSTS secret'ı gerekli"; exit 1; }
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts
+          # Şifreleme alıcısı: deploy anahtarının açık anahtarı (gizli değil; yalnızca parmak izi loglanır)
+          ssh-keygen -y -f ~/.ssh/diag_key > ~/.ssh/diag_key.pub
+          echo "alıcı anahtar parmak izi: $(ssh-keygen -lf ~/.ssh/diag_key.pub | awk '{print $2}')"
+
+      - name: Salt okuma (commit, imajlar, veritabanı)
+        run: |
+          set -euo pipefail
+          SSH=(ssh -q -o LogLevel=ERROR -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -i ~/.ssh/diag_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST")
+          out=prod-diagnostics.txt
+          {
+            echo "################ ÇALIŞAN PRODUCTION COMMIT"
+            "${SSH[@]}" "git -C '$VPS_PROJECT_PATH' rev-parse HEAD; git -C '$VPS_PROJECT_PATH' log -1 --format='%h %ci %s'; docker inspect -f '{{.Name}} {{.Config.Image}} {{.State.Status}} başlangıç={{.State.StartedAt}} yenidenbaşlama={{.RestartCount}}' webtasarimajansi-web webtasarimajansi-worker webtasarimajansi-scheduler webtasarimajansi-db"
+            echo
+            "${SSH[@]}" "docker exec -i -e PGOPTIONS='-c default_transaction_read_only=on' webtasarimajansi-db sh -c 'psql -X -q -v ON_ERROR_STOP=1 -v since=\"\$1\" -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\"' _ '$SINCE'" < "$SQL_FILE"
+          } > "$out" 2>&1 || { echo "Tanılama sorgusu başarısız (ayrıntı şifreli çıktıda)"; status=1; }
+          # Herkese açık loga yalnızca yapısal bilgi: bölüm başlıkları ve satır sayıları
+          grep -E '^################|^\([0-9]+ rows?\)' "$out" || true
+          echo "status=${status:-0}" >> "$GITHUB_ENV"
+
+      - name: Çıktıyı şifrele (age → deploy anahtarının açık anahtarı)
+        run: |
+          set -euo pipefail
+          sudo apt-get -qq update >/dev/null && sudo apt-get -qq install -y age >/dev/null
+          age -R ~/.ssh/diag_key.pub -o prod-diagnostics.txt.age prod-diagnostics.txt
+          shred -u prod-diagnostics.txt
+          ls -l prod-diagnostics.txt.age
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prod-diagnostics-${{ github.run_id }}
+          path: prod-diagnostics.txt.age
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Temizlik
+        if: always()
+        run: rm -f ~/.ssh/diag_key ~/.ssh/diag_key.pub prod-diagnostics.txt
+
+      - name: Sonuç
+        run: test "${status:-0}" = "0"
