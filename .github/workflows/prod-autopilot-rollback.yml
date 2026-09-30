@@ -1,0 +1,83 @@
+# ACİL MÜDAHALE — YALNIZCA ELLE, TEK İŞ: production Autopilot'u OBSERVE'e al ve deploy sonrası kesin Autopilot
+# kaynaklı 18 değişikliği uygulamanın kendi geri alma fonksiyonuyla geri al.
+#   1) Yedek: sunucudaki deploy/backup.sh (deploy'un kullandığı aynı yöntem; eski yedek SİLİNMEZ) + pg_restore -l doğrulaması
+#   2) scripts/ops/autopilot-rollback.ts worker container'ında: ön kontrol (18/18) → ayar kapat → en yeni önce geri al
+#      (ilk hatada durur) → her adımda sürüm/SEO logu/alan doğrulaması
+# Deploy, migration, restart, kod güncellemesi YAPMAZ. Mevcut deploy SSH secret'larını kullanır.
+# Loglar herkese açık: yalnızca kimlik, yol, alan adı ve sayılar yazdırılır (sayfa içerikleri yazdırılmaz).
+
+name: Production acil Autopilot geri alma (tek seferlik)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Onay için ROLLBACK-18 yazın"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: webtasarimajansi-prod-autopilot-rollback
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Yedek → Autopilot kapat → 18 geri alma
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PORT: ${{ secrets.VPS_PORT || '22' }}
+      VPS_PROJECT_PATH: ${{ secrets.VPS_PROJECT_PATH || '/opt/mcht/webtasarimajansi' }}
+      CONFIRM: ${{ inputs.confirm }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Onay ve ön koşullar
+        run: |
+          set -euo pipefail
+          test "$CONFIRM" = "ROLLBACK-18" || { echo "Onay girdisi ROLLBACK-18 değil — çalıştırılmadı"; exit 1; }
+          case "$VPS_PROJECT_PATH" in /*/webtasarimajansi) ;; *) echo "VPS_PROJECT_PATH */webtasarimajansi olmalı"; exit 1;; esac
+          test -n "$VPS_HOST" && test -n "$VPS_USER" || { echo "VPS_HOST / VPS_USER secret'ları eksik"; exit 1; }
+          test -f scripts/ops/autopilot-rollback.ts
+
+      - name: SSH (mevcut deploy anahtarı, sıkı host doğrulaması)
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/ops_key && chmod 600 ~/.ssh/ops_key
+          test -n "$VPS_KNOWN_HOSTS" || { echo "VPS_KNOWN_HOSTS secret'ı gerekli"; exit 1; }
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts
+
+      - name: 1) Yedek + doğrulama
+        run: |
+          set -euo pipefail
+          SSH=(ssh -q -o LogLevel=ERROR -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -i ~/.ssh/ops_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST")
+          out=$("${SSH[@]}" "cd '$VPS_PROJECT_PATH' && BACKUP_RETENTION_DAYS=36500 DEPLOY_ROOT='$VPS_PROJECT_PATH' bash deploy/backup.sh")
+          echo "$out"
+          f=$(printf '%s\n' "$out" | sed -n 's/^yedek: \([^ ]*\.dump\).*/\1/p' | tail -1)
+          test -n "$f" || { echo "BACKUP: başarısız (yol okunamadı)"; exit 1; }
+          case "$f" in "$VPS_PROJECT_PATH"/backups/webtasarimajansi-*.dump) ;; *) echo "BACKUP: beklenmeyen yol"; exit 1;; esac
+          n=$("${SSH[@]}" "test -s '$f' && docker exec -i webtasarimajansi-db pg_restore -l < '$f' | grep -c 'TABLE DATA'")
+          p=$("${SSH[@]}" "docker exec -i webtasarimajansi-db pg_restore -l < '$f' | grep -cE 'TABLE DATA public (\"Page\"|Page|\"PageVersion\"|PageVersion|\"AutopilotAction\"|AutopilotAction) '")
+          echo "yedekteki tablo verisi: $n (Page/PageVersion/AutopilotAction: $p)"
+          test "$n" -ge 20 && test "$p" -ge 3 || { echo "BACKUP: başarısız (doğrulanamadı)"; exit 1; }
+          echo "BACKUP: başarılı"
+
+      - name: 2) Autopilot kapat + 18 geri alma (uygulamanın kendi fonksiyonları, worker container'ında)
+        run: |
+          set -euo pipefail
+          SSH=(ssh -q -o LogLevel=ERROR -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -i ~/.ssh/ops_key -p "$VPS_PORT" "$VPS_USER@$VPS_HOST")
+          # Depodaki göreli importlar container'daki uygulama koduna (/app/src) çevrilir
+          sed 's#"\.\./\.\./src/#"/app/src/#g' scripts/ops/autopilot-rollback.ts | "${SSH[@]}" \
+            "docker exec -i webtasarimajansi-worker sh -c 'cat > /tmp/ops-autopilot-rollback.ts && cd /app && npx tsx --conditions=react-server --tsconfig /app/tsconfig.json /tmp/ops-autopilot-rollback.ts; rc=\$?; rm -f /tmp/ops-autopilot-rollback.ts; exit \$rc'"
+
+      - name: Temizlik
+        if: always()
+        run: rm -f ~/.ssh/ops_key
