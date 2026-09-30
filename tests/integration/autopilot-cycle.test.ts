@@ -375,8 +375,8 @@ describe("eşzamanlılık, hata kurtarma, NO_OPPORTUNITY, Autopilot KAPALI", () 
     await db.jobRun.update({ where: { id: long.id }, data: { runAfter: new Date(Date.now() - 1000) } });
     expect(await recoverStaleJobs()).toBe(1);
     expect((await db.jobRun.findUniqueOrThrow({ where: { id: long.id } })).status).toBe("error");
-    expect(await db.jobRun.count({ where: { kind: "autopilot-cycle", status: "queued" } })).toBe(1);
-    await db.jobRun.deleteMany({ where: { kind: "autopilot-cycle", status: "queued" } });
+    // Değişiklik uygulayan ajan işi otomatik yeniden kuyruğa alınmaz; sonrakini zamanlayıcı başlatır
+    expect(await db.jobRun.count({ where: { kind: "autopilot-cycle", status: "queued" } })).toBe(0);
   });
 
   it("çalışan işe başlarken kira verilir (kalp atışı bunu tazeler)", async () => {
@@ -400,7 +400,7 @@ describe("eşzamanlılık, hata kurtarma, NO_OPPORTUNITY, Autopilot KAPALI", () 
     expect((await worker).find((d) => d.kind === "autopilot-cycle")?.status).toBe("ok");
   });
 
-  it("bir aşama hatası diğer aşamaları durdurmaz; iş hata olarak kaydedilir ve yeniden denenir", async () => {
+  it("kritik olmayan bir aşama hatası diğer aşamaları durdurmaz; iş hata olarak kaydedilir ve YENİDEN DENENMEZ (sonrakini zamanlayıcı başlatır)", async () => {
     cycleHooks.defaults = { skipAgentRun: true, autoApplyFetch: null };
     cycleHooks.beforeStep = (name) => { if (name === "Fırsat motoru (seed + rakip + GSC)") throw new Error("test: geçici hata"); };
     await db.jobRun.deleteMany({ where: { status: { in: ["queued", "running"] } } });
@@ -410,10 +410,9 @@ describe("eşzamanlılık, hata kurtarma, NO_OPPORTUNITY, Autopilot KAPALI", () 
     expect(r.status).toBe("error");
     expect(r.message).toMatch(/test: geçici hata/);
     expect(r.message).toMatch(/48 saat otomatik uygulama/); // sonraki aşamalar yine çalıştı (özet satırında)
-    expect(r.retryAt).toBeTruthy();
-    const retry = await db.jobRun.findFirstOrThrow({ where: { kind: "autopilot-cycle", status: "queued" } });
-    expect(retry.attempts).toBe(2);
-    await db.jobRun.delete({ where: { id: retry.id } });
+    expect(r.retryAt).toBeUndefined();
+    expect(await db.jobRun.count({ where: { kind: "autopilot-cycle", status: "queued" } })).toBe(0);
+    expect((await db.jobRun.findUniqueOrThrow({ where: { id: r.id } })).message).toMatch(/yeniden denenmez/);
   });
 
   it("fırsat yoksa NO_OPPORTUNITY kaydedilir ve zamanlayıcı sonraki cycle'ı yine planlar", async () => {

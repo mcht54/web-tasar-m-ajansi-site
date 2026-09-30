@@ -1,7 +1,7 @@
 // Otomatik değişikliklerin kalite kapısı. Geçmeyen öneri uygulanmaz.
 
 import { PLACEHOLDER_RE, UNVERIFIED_RE } from "../seo/analyzer-shared";
-import { containsPhrase, normalizeKeyword, trLower } from "../text/slug";
+import { containsPhrase, foldKeyword, normalizeKeyword, trLower } from "../text/slug";
 import { phraseDensity, shingles, similarity } from "../text/analyze";
 
 export type QcResult = { ok: boolean; problems: string[] };
@@ -113,4 +113,29 @@ export function checkAnchor(anchor: string, existingAnchorsToTarget: string[]): 
   if (same >= 3) problems.push("Aynı anchor bu hedefe çok kez kullanılmış");
   common(a, problems);
   return { ok: problems.length === 0, problems };
+}
+
+// ─── Konu uyumu (yanlış title koruması) ─────────────────────────────────────
+// Bir ifade, sayfanın GERÇEK konusuyla (H1, ad, ana kelime, URL) uyumlu değilse o sayfanın title'ı
+// olamaz. Genel kelimeler (web, site, tasarım, hizmet, fiyat…) ayırt edici sayılmaz; kalanlar
+// ("restoran", "google ads", "e-ticaret"…) iki yönde karşılaştırılır:
+//   • sayfanın ayırt edici kelimelerinin en az yarısı ifadede geçmeli (restoran sayfası → "restoran" olmalı)
+//   • ifade sayfada olmayan yeni bir konu getirmemeli (/web-tasarim → "e-ticaret …" olamaz)
+const GENERIC = new Set([
+  "web", "site", "sitesi", "siteleri", "internet", "tasarim", "tasarimi", "tasarimci", "hizmet", "hizmeti", "hizmetleri",
+  "firma", "firmasi", "firmalari", "ajans", "ajansi", "sirket", "sirketi", "fiyat", "fiyati", "fiyatlari", "ucret", "ucreti",
+  "profesyonel", "yaptirma", "yapimi", "yapan", "olusturma", "nedir", "nasil", "neden", "kadar", "icin", "ile", "iyi", "blog", "rehber", "rehberi",
+]);
+const distinctive = (s: string) => [...new Set(foldKeyword(s).replace(/-/g, " ").split(/\s+/).filter((w) => w.length >= 3 && !GENERIC.has(w)))];
+// Türkçe ek toleransı: biri ötekinin başıysa (en az 4 harf) aynı kelime sayılır ("restoran" ~ "restoranlar")
+const same = (a: string, b: string) => a === b || (Math.min(a.length, b.length) >= 4 && (a.startsWith(b) || b.startsWith(a)));
+
+export function titleTopicProblem(page: { h1: string | null; name: string; primaryKeyword: string | null; path: string }, phrase: string): string | null {
+  const topic = distinctive(`${page.h1 ?? ""} ${page.name} ${page.primaryKeyword ?? ""} ${page.path.replace(/\//g, " ")}`);
+  const q = distinctive(phrase);
+  const covered = topic.filter((t) => q.some((w) => same(w, t)));
+  if (topic.length && covered.length / topic.length < 0.5) return `Konu uyumsuz: sayfanın konusu (${topic.join(", ")}) “${phrase}” ifadesinde yok`;
+  const foreign = q.filter((w) => !topic.some((t) => same(w, t)));
+  if (foreign.length) return `Konu uyumsuz: “${foreign.join(", ")}” bu sayfanın konusu değil`;
+  return null;
 }

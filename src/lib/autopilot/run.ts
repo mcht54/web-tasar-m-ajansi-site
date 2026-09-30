@@ -44,6 +44,17 @@ export const STAGES = [
 
 export type StageLog = { n: number; name: string; status: "ok" | "skipped" | "error"; message: string; ms: number };
 
+/**
+ * Kritik analiz aşamaları: Search Console senkronu, site taraması, içerik analizi, fırsat üretimi.
+ * Biri hata verirse karar girdileri güvenilir değildir → bu çalıştırmada hiçbir öneri oluşturulmaz ve
+ * hiçbir değişiklik uygulanmaz (atlanması "skipped" sayılır, hata değildir).
+ */
+export const CRITICAL_STAGES = [1, 6, 7, 11];
+export function criticalFailure(stages: StageLog[]): string | null {
+  const bad = stages.filter((s) => CRITICAL_STAGES.includes(s.n) && s.status === "error");
+  return bad.length ? bad.map((s) => `${s.name}: ${s.message}`).join("; ") : null;
+}
+
 
 /** ISO hafta anahtarı (Türkiye saati, UTC+3). */
 export function weekKey(d = new Date()): string {
@@ -198,7 +209,13 @@ export async function runAutopilot(opts: RunOptions = {}) {
     const top = ctx.candidates[0];
     return { message: `En yüksek skor ${top ? `${top.score} (${top.title})` : "—"}${adj.length ? `; öğrenme çarpanları: ${adj.join(", ")}` : "; öğrenme için henüz yeterli sonuç yok"}${ctx.hasGsc ? "" : "; Search Console verisi olmadığı için yalnızca site içi sinyallerle skorlandı"}` };
   });
+  const blockedMsg = () => {
+    const c = criticalFailure(stages);
+    return c ? `Kritik analiz aşaması hatalı — bu çalıştırmada öneri oluşturulmadı, değişiklik uygulanmadı (${c.slice(0, 300)})` : null;
+  };
   await stage(13, async () => {
+    const blocked = blockedMsg();
+    if (blocked) return { status: "skipped", message: blocked };
     // Haftalık otomatik bütçe: uygulanmış + otomatik uygulanmak üzere bekleyen öneriler
     const applied = await db.autopilotAction.count({ where: { OR: [{ status: "applied" }, { status: "pending_approval", autoApply: true }], run: { weekKey: wk } } });
     const budget = Math.max(0, ap.maxChangesPerWeek - applied);
@@ -238,6 +255,8 @@ export async function runAutopilot(opts: RunOptions = {}) {
 
   // ── UYGULA ──
   await stage(16, async () => {
+    const blocked = blockedMsg();
+    if (blocked) return { status: "skipped", message: blocked };
     // Uygulamadan ÖNCE sağlık ölçümü (rapordaki önce/sonra karşılaştırması için)
     ctx.healthBefore = await computeSeoHealth({ fetchImpl: f }).catch(() => null);
     // Her öneri HAZIRLANIR (somut değişiklik + kalite kapısı) ve onay penceresine girer.
@@ -315,5 +334,5 @@ export async function runAutopilot(opts: RunOptions = {}) {
     where: { id: run.id },
     data: { status: errors.length ? "partial" : "ok", finishedAt: new Date(), stages: stages as object, summary: { ...(report ?? {}), healthBefore: ctx.healthBefore, pageDecisions: ctx.pageDecisions, keywordDecisions: ctx.keywordDecisions, mode } as object },
   });
-  return { id: run.id, weekKey: wk, stages, errors: errors.length, exec: ctx.exec };
+  return { id: run.id, weekKey: wk, stages, errors: errors.length, exec: ctx.exec, critical: criticalFailure(stages) };
 }
