@@ -23,6 +23,7 @@ import { extractMarkdown } from "../text/markdown";
 import { containsPhrase, foldKeyword, normalizeKeyword, slugify } from "../text/slug";
 import { createProposal, duplicateReason, type CreateResult } from "../proposals/lifecycle";
 import { classifyIntent } from "./intent";
+import { titleTopicProblem } from "./qc";
 import { matchTopic } from "./clusters";
 import { learningStats } from "./learning";
 import { activeSeeds } from "./discovery";
@@ -252,6 +253,10 @@ export async function findOpportunities(opts: { now?: Date } = {}): Promise<{ op
     };
     const d = decideOpportunity(input);
     if (d.decision === "NONE") continue;
+    // Yanlış title koruması: mevcut sayfayı başka bir konunun ifadesiyle "optimize etme" (ör. restoran
+    // sayfasına "web sitesi fiyatları"); hedef sayfanın gerçek konusuyla uyumsuzsa fırsat üretilmez
+    const tgtPage = (d.decision === "OPTIMIZE_CONTENT" && dup ? dup : target)?.p;
+    if ((d.decision === "OPTIMIZE_TITLE" || d.decision === "OPTIMIZE_CONTENT") && tgtPage && titleTopicProblem(tgtPage, phrase)) continue;
     const type = DECISION_TYPE[d.decision];
     input.learning = learn.get(type)?.multiplier ?? 1;
     const sc = scoreOpportunity(input);

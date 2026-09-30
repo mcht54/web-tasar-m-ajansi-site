@@ -96,6 +96,10 @@ export async function runAutopilotCycle(opts: CycleOptions = {}): Promise<CycleS
 
   // 1) Rakip taraması: zamanı gelen varsa kuyruğa (bu cycle beklemez; mevcut önbellekle devam eder)
   let competitorCrawlBusy = false;
+  // Kritik analiz hatası: bu cycle'da hiçbir yeni öneri oluşturulmaz ve hiçbir değişiklik uygulanmaz
+  let critical: string | null = null;
+  let agentDone = false; // 23 aşamalı analiz tamamlandı mı (hata aşaması olsa bile)
+  const blocked = () => (critical ? { status: "skipped" as const, message: `Kritik analiz aşaması hatalı — bu cycle'da değişiklik uygulanmadı (${critical.slice(0, 200)})` } : null);
   await step("Rakip taraması", async () => {
     const active = await db.competitor.count({ where: { status: { not: "paused" } } });
     if (!active) return { status: "skipped", message: "Takip edilen rakip yok" };
@@ -123,18 +127,24 @@ export async function runAutopilotCycle(opts: CycleOptions = {}): Promise<CycleS
       const run = await db.autopilotRun.create({ data: { weekKey: weekKey(started), trigger: "cycle" } });
       runId = run.id;
       const ev = await evaluateExperiments(started);
+      agentDone = true;
       return { status: "skipped", message: `Ajan çalıştırması atlandı (test); ölçüm: ${ev.interim} ara, ${ev.final} nihai` };
     }
     const f = await freshStages(started);
     const r = await runAutopilot({ ...opts.run, trigger: "cycle", sendEmail: false, now: opts.run?.now ?? started, skipStages: [...new Set([...(opts.run?.skipStages ?? []), ...f.skip])] });
     runId = r.id;
     const msg = `${r.stages.filter((s) => s.status === "ok").length}/23 aşama tamam, ${Object.entries(r.exec).map(([k, v]) => `${k} ${v}`).join(", ") || "yeni öneri yok"}${f.notes.length ? ` · ${f.notes.join("; ")}` : ""}`;
+    critical = r.critical;
+    agentDone = true;
     if (r.errors) throw new Error(`${msg}; hatalı aşama: ${r.stages.filter((s) => s.status === "error").map((s) => `${s.name} (${s.message})`).join("; ")}`);
     return { message: msg };
   });
 
   // 4) Rakip fırsatları (hizmet/içerik/teknik/iç link farkları)
+  // Ajan çalıştırması hiç tamamlanamadıysa (çöktüyse) da kritik sayılır
+  if (!agentDone && !critical) critical = "23 aşamalı analiz tamamlanamadı";
   await step("Rakip fırsatları", async () => {
+    const b = blocked(); if (b) return b;
     if (competitorCrawlBusy) return { status: "deferred", message: "Rakip taraması sürüyor: fırsat taraması tarama bitince (sonraki cycle veya tarama sonrası iş) çalışır" };
     if (!(await db.competitorPage.count({ where: { removedAt: null } }))) return { status: "skipped", message: "Rakip verisi yok" };
     const s = await runCompetitorOpportunities({ now: started });
@@ -143,6 +153,7 @@ export async function runAutopilotCycle(opts: CycleOptions = {}): Promise<CycleS
 
   // 5) Birleşik fırsat motoru
   await step("Fırsat motoru (seed + rakip + GSC)", async () => {
+    const b = blocked(); if (b) return b;
     const s = await runUniverseOpportunities({ now: started, runId });
     opportunities = s.opportunities;
     if (s.skippedReason) return { status: "skipped", message: s.skippedReason };
@@ -151,6 +162,7 @@ export async function runAutopilotCycle(opts: CycleOptions = {}): Promise<CycleS
 
   // 6) İçerik yenileme + eksik alan (iş kaydıyla; son 20 saatte çalıştıysa önbellek)
   await step("İçerik ve eksik alan taraması", async () => {
+    const b = blocked(); if (b) return b;
     const fresh = new Date(started.getTime() - FRESH_HOURS * HOUR);
     const out: string[] = [];
     for (const kind of ["content-opportunity-scan", "page-completeness-scan"] as const) {
@@ -164,6 +176,7 @@ export async function runAutopilotCycle(opts: CycleOptions = {}): Promise<CycleS
 
   // 7) 48 saati dolan öneriler (Autopilot açık + AUTONOMOUS + düşük/orta risk)
   await step("48 saat otomatik uygulama", async () => {
+    const b = blocked(); if (b) return b;
     const s = await runAutoApply({ now: opts.now, fetchImpl: opts.autoApplyFetch });
     autoApplied = s.applied;
     if (s.off) return { status: "skipped", message: s.off };

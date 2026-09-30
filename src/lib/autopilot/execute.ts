@@ -23,7 +23,7 @@ import { angleFor } from "../content/strategy";
 import { sanitizeAiText, unsafeMarkup } from "../content/sanitize";
 import { LOCATION_TYPES } from "../seo/location-quality";
 import { execNewPage, newPageGate, publishNewPage, rollbackNewPage } from "./new-page";
-import { checkAnchor, checkDescription, checkSection, checkTitle } from "./qc";
+import { checkAnchor, checkDescription, checkSection, checkTitle, titleTopicProblem } from "./qc";
 import { startExperiment } from "./experiments";
 import { addDays, pageMetrics } from "./metrics";
 
@@ -153,6 +153,9 @@ export function ruleTitles(query: string, pageName: string, h1: string, siteName
 async function execTitle(a: Action, model: string, approved = false): Promise<ExecOutcome> {
   if (!a.pageId || !a.query) return { status: "skipped", note: "Odak sorgu yok" };
   const { page } = await pageInput(a.pageId);
+  // Yanlış title koruması: sayfanın gerçek konusuyla uyumsuz ifade title yapılamaz (hangi motordan gelirse gelsin)
+  const offTopic = titleTopicProblem(page, a.query);
+  if (offTopic) return { status: "skipped", note: offTopic };
   const st = await getSettingsFresh();
   const current = resolveTitle(page, st.seo);
   const others = await otherTitles(page.id);

@@ -83,6 +83,11 @@ export async function runJob(kind: JobKind, triggeredBy: string): Promise<JobRes
 // Yarıda kalan (çökmüş) iş zaman aşımıyla hataya çekilir ve yeniden denenir.
 
 export const MAX_ATTEMPTS = 3;
+/**
+ * Otomatik yeniden denenmeyen işler: SEO değişikliği uygulayan ajan döngüleri. Yeniden deneme her seferinde
+ * yeni öneriler uygulayabilirdi; hata olarak biterler, sonrakini zamanlayıcı normal aralıkla başlatır.
+ */
+export const NO_RETRY: readonly string[] = ["autopilot-cycle", "autopilot"];
 export const RETRY_BASE_MS = 5 * 60_000; // 5 dk, 10 dk, 20 dk
 export const STALE_MS = 2 * 3600_000;
 
@@ -108,7 +113,7 @@ export async function recoverStaleJobs(now = new Date()): Promise<number> {
   for (const j of stale) {
     // Koşul güncellemede tekrar uygulanır: arada kirasını tazeleyen canlı iş kurtarılmaz
     const done = await db.jobRun.updateMany({ where: { id: j.id, ...staleWhere }, data: { status: "error", message: `${j.message ?? ""} Zaman aşımı: iş ${STALE_MS / 3600_000} saatte bitmedi (süreç kesilmiş olabilir)`.trim(), finishedAt: now } });
-    if (done.count && j.attempts < MAX_ATTEMPTS) await enqueueJob(j.kind as JobKind, j.triggeredBy ?? "yeniden deneme", { attempts: j.attempts + 1, runAfter: new Date(now.getTime() + RETRY_BASE_MS) });
+    if (done.count && j.attempts < MAX_ATTEMPTS && !NO_RETRY.includes(j.kind)) await enqueueJob(j.kind as JobKind, j.triggeredBy ?? "yeniden deneme", { attempts: j.attempts + 1, runAfter: new Date(now.getTime() + RETRY_BASE_MS) });
   }
   return stale.length;
 }
@@ -166,9 +171,9 @@ export async function processQueue(opts: { maxJobs?: number; budgetMs?: number; 
       out.push({ id: job.id, kind: job.kind, status: r.status ?? "ok", message: r.message });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      const retry = job.attempts < MAX_ATTEMPTS;
+      const retry = job.attempts < MAX_ATTEMPTS && !NO_RETRY.includes(job.kind);
       const retryAt = new Date(clock().getTime() + RETRY_BASE_MS * 2 ** (job.attempts - 1));
-      await db.jobRun.update({ where: { id: job.id }, data: { status: "error", message: `${message}${retry ? ` · yeniden denenecek (deneme ${job.attempts + 1}/${MAX_ATTEMPTS})` : ` · ${MAX_ATTEMPTS} deneme tükendi`}`, finishedAt: new Date() } });
+      await db.jobRun.update({ where: { id: job.id }, data: { status: "error", message: `${message}${retry ? ` · yeniden denenecek (deneme ${job.attempts + 1}/${MAX_ATTEMPTS})` : NO_RETRY.includes(job.kind) ? " · yeniden denenmez (sonrakini zamanlayıcı başlatır)" : ` · ${MAX_ATTEMPTS} deneme tükendi`}`, finishedAt: new Date() } });
       if (retry) await enqueueJob(job.kind as JobKind, job.triggeredBy ?? "yeniden deneme", { attempts: job.attempts + 1, runAfter: retryAt });
       out.push({ id: job.id, kind: job.kind, status: "error", message, ...(retry ? { retryAt: retryAt.toISOString() } : {}) });
     }
