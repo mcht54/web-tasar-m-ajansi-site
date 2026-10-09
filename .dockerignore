@@ -8,3 +8,4 @@ storage
 .env.*
 backups
 deploy/snapshots
+dist

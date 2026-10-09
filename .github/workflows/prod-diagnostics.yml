@@ -79,7 +79,7 @@ jobs:
           out=prod-diagnostics.txt
           {
             echo "################ ÇALIŞAN PRODUCTION COMMIT"
-            "${SSH[@]}" "git -C '$VPS_PROJECT_PATH' rev-parse HEAD; git -C '$VPS_PROJECT_PATH' log -1 --format='%h %ci %s'; docker inspect -f '{{.Name}} {{.Config.Image}} {{.State.Status}} başlangıç={{.State.StartedAt}} yenidenbaşlama={{.RestartCount}}' webtasarimajansi-web webtasarimajansi-worker webtasarimajansi-scheduler webtasarimajansi-db"
+            "${SSH[@]}" "git -C '$VPS_PROJECT_PATH' rev-parse HEAD; git -C '$VPS_PROJECT_PATH' log -1 --format='%h %ci %s'; docker inspect -f '{{.Name}} {{.Config.Image}} {{.State.Status}} başlangıç={{.State.StartedAt}} yenidenbaşlama={{.RestartCount}}' webtasarimajansi-web webtasarimajansi-worker webtasarimajansi-db"
             echo
             "${SSH[@]}" "docker exec -i -e PGOPTIONS='-c default_transaction_read_only=on' webtasarimajansi-db sh -c 'psql -X -q -v ON_ERROR_STOP=1 -v since=\"\$1\" -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\"' _ '$SINCE'" < "$SQL_FILE"
           } > "$out" 2>&1 || { echo "Tanılama sorgusu başarısız (ayrıntı şifreli çıktıda)"; status=1; }

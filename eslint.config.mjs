@@ -16,6 +16,7 @@ const eslintConfig = defineConfig([
     "src/generated/**",
     "storage/**",
     ".build/**", // production derleme çıktısı (dağıtım)
+    "dist/**", // önceden derlenmiş worker (npm run build:worker)
     "backups/**",
     "deploy/snapshots/**",
   ]),

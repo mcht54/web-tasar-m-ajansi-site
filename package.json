@@ -16,6 +16,7 @@
     "test:e2e": "bash scripts/e2e.sh",
     "seo:validate": "node scripts/seo-validate.mjs",
     "worker": "tsx --conditions=react-server scripts/worker.ts",
+    "build:worker": "esbuild scripts/worker.ts --bundle --platform=node --format=esm --target=node22 --packages=external --alias:next/cache=next/cache.js --conditions=react-server --outfile=dist/worker.mjs --log-level=warning",
     "icons": "node scripts/build-icons.mjs"
   },
   "dependencies": {
@@ -41,6 +42,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "dotenv": "^18.0.3",
+    "esbuild": "0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
     "playwright-core": "^1.63.0",

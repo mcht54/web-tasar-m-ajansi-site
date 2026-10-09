@@ -11,6 +11,9 @@ x-app-env: &app-env
   MEDIA_DIR: /app/storage/media
   APP_INTERNAL_URL: http://webtasarimajansi-web:3300
   EMAIL_TRANSPORT: ${EMAIL_TRANSPORT:-smtp}
+  # glibc'nin iş parçacığı başına bellek havuzlarını sınırlar: serbest bırakılan bellek havuzlarda
+  # takılı kalmaz. Ölçüm (Linux, aynı yük): web 450 → 370 MiB; davranış değişmez.
+  MALLOC_ARENA_MAX: "2"
 
 services:
   db:
@@ -74,7 +77,7 @@ services:
     restart: unless-stopped
     environment:
       <<: *app-env
-      AUTOPILOT_SCHEDULER: "off" # zamanlayıcı ayrı konteynerde
+      AUTOPILOT_SCHEDULER: "off" # zamanlayıcı worker konteynerinde
     ports:
       - "127.0.0.1:${WEB_PORT:-3400}:3300"
     volumes:
@@ -90,23 +93,15 @@ services:
     restart: unless-stopped
     environment:
       <<: *app-env
-      WORKER_ROLE: worker
+      # Zamanlayıcı + kuyruk tek süreçte, iki bağımsız döngü (scripts/worker.ts). Ayrı scheduler
+      # konteyneri ~220 MB'lık ikinci bir Node + Prisma süreci demekti.
+      WORKER_ROLE: both
     depends_on: { db: { condition: service_healthy }, web: { condition: service_started } }
     networks: [webtasarimajansi-db-network, webtasarimajansi-network]
-    mem_limit: 1g
+    # Önceden derlenmiş worker: boşta ~165 MB, tam iş yükünde tepe ~235 MB (eskiden worker + scheduler 500 MB).
+    # Sınır (tavan) üretim verisiyle tepe ölçülene kadar geniş tutulur; aşılırsa iki döngü birlikte yeniden başlar.
+    mem_limit: 768m
     cpus: 1.0
-    logging: *logging
-
-  scheduler:
-    image: webtasarimajansi-tools:latest
-    container_name: webtasarimajansi-scheduler
-    restart: unless-stopped
-    environment:
-      <<: *app-env
-      WORKER_ROLE: scheduler
-    depends_on: { db: { condition: service_healthy } }
-    networks: [webtasarimajansi-db-network]
-    mem_limit: 512m # tsx + Prisma ile boşta ~220 MB; 256m sınıra çok yakındı
     logging: *logging
 
 networks:

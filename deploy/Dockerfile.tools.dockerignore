@@ -9,3 +9,4 @@ storage
 backups
 deploy/snapshots
 .build
+dist

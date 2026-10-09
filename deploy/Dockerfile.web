@@ -11,5 +11,6 @@ COPY public ./public
 RUN mkdir -p /app/.next/cache && chown -R app:app /app/.next /app/storage
 USER app
 EXPOSE 3300
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 CMD node -e "fetch('http://127.0.0.1:3300/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+# Sağlık kontrolü bash ile: her 30 sn'de ikinci bir Node süreci (~40 MB) başlatılmaz. /health 200 değilse başarısız.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 CMD ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3300 && printf 'GET /health HTTP/1.0\\r\\nHost: 127.0.0.1\\r\\n\\r\\n' >&3 && head -n1 <&3 | grep -q ' 200 '"]
 CMD ["node", "server.js"]

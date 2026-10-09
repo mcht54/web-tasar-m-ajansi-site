@@ -27,15 +27,25 @@ describe("docker compose yalıtımı", () => {
     const db = compose.split(/\n  (?=\w)/).find((b) => b.startsWith("db:"))!;
     expect(db).toContain("networks: [webtasarimajansi-db-network]");
   });
-  it("ayrı worker ve scheduler konteynerleri, yeniden başlatma politikası ve kaynak sınırları", () => {
-    for (const svc of ["web", "worker", "scheduler", "db"]) {
+  it("web, tek worker (zamanlayıcı + kuyruk) ve db; yeniden başlatma politikası ve kaynak sınırları", () => {
+    for (const svc of ["web", "worker", "db"]) {
       const block = compose.split(/\n  (?=\w)/).find((b) => b.startsWith(`${svc}:`))!;
       expect(block, svc).toContain("restart: unless-stopped");
       expect(block, svc).toMatch(/mem_limit: \d+[mg]/);
     }
-    expect(compose).toContain("WORKER_ROLE: worker");
-    expect(compose).toContain("WORKER_ROLE: scheduler");
+    expect(compose).not.toMatch(/^  scheduler:/m); // ayrı scheduler konteyneri yok (bellek)
+    expect(compose).toContain("WORKER_ROLE: both");
     expect(compose).toMatch(/AUTOPILOT_SCHEDULER: "off"/); // web içinde ikinci zamanlayıcı yok
+  });
+  it("bellek: glibc havuz sınırı, önceden derlenmiş worker, Node başlatmayan sağlık kontrolü", () => {
+    expect(compose).toMatch(/x-app-env: &app-env\n(?:  .*\n)*  MALLOC_ARENA_MAX: "2"/);
+    const tools = readFileSync("deploy/Dockerfile.tools", "utf8");
+    expect(tools).toContain("npm run build:worker");
+    expect(tools).toContain('CMD ["node", "--conditions=react-server", "dist/worker.mjs"]');
+    const web = readFileSync("deploy/Dockerfile.web", "utf8");
+    const hc = web.split("\n").find((l) => l.startsWith("HEALTHCHECK"))!;
+    expect(hc).toContain("/health");
+    expect(hc).not.toMatch(/\bnode\b/);
   });
 });
 
@@ -64,6 +74,13 @@ describe("nginx", () => {
     expect(directives).toContain("proxy_set_header Connection $webtasarimajansi_connection;");
     expect(directives).not.toMatch(/proxy_set_header Connection "upgrade"/);
     for (const t of ["proxy_connect_timeout", "proxy_send_timeout", "proxy_read_timeout"]) expect(directives).toMatch(new RegExp(`${t} \\d+s;`));
+  });
+
+  it("ortak 404 adresini bildiren iç başlık ziyaretçiye gönderilmez", () => {
+    const directives = nginx.split("\n").map((l) => l.replace(/#.*/, "")).join("\n");
+    const location = directives.slice(directives.lastIndexOf("location / {")); // uygulamaya proxy yapan blok
+    expect(location).toContain("proxy_pass http://127.0.0.1:3400;");
+    expect(location.slice(0, location.indexOf("}"))).toContain("proxy_hide_header x-middleware-rewrite;");
   });
 });
 
@@ -112,6 +129,8 @@ describe("scripts/deploy.sh güvenliği", () => {
     expect(code).toContain('git reset -q --hard "$PREV_SHA"');
     for (const p of ["/health", "/sitemap.xml", "/robots.txt"]) expect(code).toContain(p);
     expect(code).toMatch(/RestartCount/); // crash loop tespiti
+    expect(code).toContain("--remove-orphans"); // compose'dan çıkan servis (eski scheduler) kapanır
+    expect(code).not.toMatch(/\bscheduler\b/);
     expect(code).not.toMatch(/migrate (reset|down)|prisma migrate dev/);
   });
 });

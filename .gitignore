@@ -82,3 +82,6 @@ postgres_data/
 /.last-successful-deploy
 /.docker/
 /.claude/settings.local.json
+
+# Önceden derlenmiş worker (Dockerfile.tools içinde üretilir)
+/dist
