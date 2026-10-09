@@ -57,7 +57,10 @@ export async function proxy(req: NextRequest, event: NextFetchEvent) {
     return NextResponse.redirect(target, redirect.code);
   }
 
-  const known = state.published.has(decodedPath(pathname)) || APP_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  // NOT_FOUND_PATH bilinen sayılır: yeniden yazma bir gün dış adres sayılıp (sunucu HOSTNAME'i
+  // proxy'nin gördüğü adresten farklıysa) isteğe geri dönerse döngü oluşmaz.
+  const known =
+    pathname === NOT_FOUND_PATH || state.published.has(decodedPath(pathname)) || APP_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
   if (!known && req.method === "GET") {
     event.waitUntil(recordNotFound(pathname, req.headers.get("referer"), req.headers.get("user-agent")).catch(() => {}));
   }

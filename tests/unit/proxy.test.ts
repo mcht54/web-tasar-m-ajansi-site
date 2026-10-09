@@ -49,6 +49,11 @@ describe("proxy: bilinmeyen adresler ISR önbelleğini doldurmaz", () => {
     expect(routing.recordNotFound).not.toHaveBeenCalled();
   });
 
+  it("ortak 404 adresinin kendisi yeniden yazılmaz (döngü olmaz) ve 404 kaydı bırakmaz", async () => {
+    expect(rewriteOf(await call(NOT_FOUND_PATH))).toBeNull();
+    expect(routing.recordNotFound).not.toHaveBeenCalled();
+  });
+
   it("ortak 404 adresi hiçbir zaman gerçek bir sayfa URL'si olamaz", () => {
     expect(validatePath(NOT_FOUND_PATH)).not.toBeNull();
   });
