@@ -119,7 +119,8 @@ rollback() {
   docker image tag "$PROJECT-web:previous" "$PROJECT-web:latest"
   docker image tag "$PROJECT-tools:previous" "$PROJECT-tools:latest"
   [ "$PREV_SHA" != none ] && git reset -q --hard "$PREV_SHA"
-  "${COMPOSE[@]}" up -d --no-build web worker scheduler
+  # Önceki sürümün compose'undaki servisler (db hariç); fazladan kalan servis konteyneri kaldırılır
+  "${COMPOSE[@]}" up -d --no-build --remove-orphans $("${COMPOSE[@]}" config --services | grep -vx db)
   if wait_healthy 60; then echo "✓ Önceki sürüm ($PREV_SHA) yeniden çalışıyor."; note "ROLLBACK-OK $PREV_SHA"
   else echo "✗ Önceki sürüm de sağlıklı değil — elle müdahale gerekli."; note "ROLLBACK-FAIL $PREV_SHA"; fi
   echo "Not: veritabanı migration'ları geri alınmaz (yalnızca ileri, eklemeli migration'lar; veri kaybı riski yok)."
@@ -155,7 +156,8 @@ say "Migration (ileri, eklemeli) + seed (yalnızca eksik kayıtları ekler)"
 
 # ── 7. Geçiş + sağlık kontrolü ──
 say "Yeni container'lar"
-"${COMPOSE[@]}" up -d --no-build web worker scheduler
+# --remove-orphans: compose'dan çıkarılmış servisin (ör. eski ayrı scheduler) konteynerini kaldırır
+"${COMPOSE[@]}" up -d --no-build --remove-orphans web worker
 wait_healthy 90 || rollback "/health 200 dönmedi"
 
 check() {
@@ -167,7 +169,7 @@ say "Doğrulama"
 curl -fsS "http://127.0.0.1:$WEB_PORT/health" | grep -q '"database":{"status":"ok"' || rollback "veritabanı bağlantısı yok"
 for p in / /sitemap.xml /robots.txt /health; do check "$p" || rollback "$p 200 dönmedi"; done
 sleep 15 # crash loop tespiti için bekle
-for c in web worker scheduler db; do
+for c in web worker db; do
   st=$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' "$PROJECT-$c" 2>/dev/null || echo "yok 0")
   echo "  $PROJECT-$c: $st"
   case "$st" in running\ 0|running\ 1) ;; *) rollback "$PROJECT-$c çalışmıyor veya yeniden başlıyor ($st)";; esac

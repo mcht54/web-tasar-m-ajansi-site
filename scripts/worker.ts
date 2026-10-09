@@ -1,7 +1,9 @@
-// Ayrı süreçte zamanlayıcı ve/veya worker. Production'da iki ayrı konteyner:
+// Ayrı süreçte zamanlayıcı ve/veya worker. Production'da tek konteyner (WORKER_ROLE=both):
 //   WORKER_ROLE=scheduler → yalnızca zamanı gelen işleri kuyruğa koyar
 //   WORKER_ROLE=worker    → yalnızca kuyruğu işler
-//   WORKER_ROLE=both      → ikisi (tek sunuculu kurulum; varsayılan)
+//   WORKER_ROLE=both      → ikisi (varsayılan)
+// "both" modunda zamanlayıcı ve kuyruk iki bağımsız döngüdür: kuyrukta saatlerce süren bir iş
+// varken de zamanlayıcı her aralıkta çalışır (alarm, 48 saatlik onay, kalp atışı gecikmez).
 // Aynı iş iki kez çalışmaz: kuyruk sahiplenmesi veritabanında atomiktir; birden çok
 // worker/scheduler aynı anda çalışsa da güvenlidir.
 import "dotenv/config";
@@ -16,18 +18,33 @@ if (!["scheduler", "worker", "both"].includes(ROLE)) {
 let stopping = false;
 for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => { stopping = true; });
 
-(async () => {
-  console.log(`[${ROLE}] başladı (aralık ${INTERVAL / 1000} sn)`);
+async function loop(name: string, tick: () => Promise<string | null>) {
   while (!stopping) {
     try {
-      const queued = ROLE !== "worker" ? await schedulerTick() : [];
-      const ran = ROLE !== "scheduler" ? await workerTick() : [];
-      if (queued.length || ran.length) console.log(`[${ROLE}] kuyruğa: ${queued.join(", ") || "—"} · işlendi: ${ran.map((r) => `${r.kind}=${r.status}`).join(", ") || "—"}`);
+      const line = await tick();
+      if (line) console.log(`[${name}] ${line}`);
     } catch (e) {
-      console.error(`[${ROLE}] hata:`, e instanceof Error ? e.message : e);
+      console.error(`[${name}] hata:`, e instanceof Error ? e.message : e);
     }
     for (let i = 0; i < INTERVAL / 1000 && !stopping; i++) await new Promise((r) => setTimeout(r, 1000));
   }
+}
+
+const scheduler = async () => {
+  const queued = await schedulerTick();
+  return queued.length ? `kuyruğa: ${queued.join(", ")}` : null;
+};
+const worker = async () => {
+  const ran = await workerTick();
+  return ran.length ? `işlendi: ${ran.map((r) => `${r.kind}=${r.status}`).join(", ")}` : null;
+};
+
+(async () => {
+  console.log(`[${ROLE}] başladı (aralık ${INTERVAL / 1000} sn)`);
+  await Promise.all([
+    ROLE !== "worker" ? loop("scheduler", scheduler) : null,
+    ROLE !== "scheduler" ? loop("worker", worker) : null,
+  ]);
   console.log(`[${ROLE}] durdu`);
   process.exit(0);
 })();

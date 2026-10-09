@@ -8,6 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY . .
-RUN npx prisma generate && chown -R app:app /app
+# Worker önceden tek dosyaya derlenir: çalışırken npm/tsx/esbuild süreçleri ve TypeScript
+# dönüştürücüsü bellekte tutulmaz (tsx yalnızca elle çalıştırılan ops betikleri için kalır).
+RUN npx prisma generate && npm run build:worker && chown -R app:app /app
 USER app
-CMD ["npx", "tsx", "--conditions=react-server", "scripts/worker.ts"]
+CMD ["node", "--conditions=react-server", "dist/worker.mjs"]

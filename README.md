@@ -29,7 +29,7 @@ npm run dev                     # http://localhost:3300 — panel: /yonetim
 > Dev'de ayrı worker yoktur: zamanlayıcı web sürecinin içinden 2 dakikada bir `/api/internal/tick`'i
 > çağırır ve kuyruktaki işler (ör. rakip taraması) bu istekte çalışır. Uzun işlerin web sürecini
 > meşgul etmemesini istiyorsanız `.env`'e `AUTOPILOT_SCHEDULER=off` yazıp ayrı terminalde
-> `npm run worker` çalıştırın (production'daki web / worker / scheduler ayrımıyla aynı).
+> `npm run worker` çalıştırın (production'daki web / worker ayrımıyla aynı).
 
 ## Komutlar
 
@@ -207,11 +207,13 @@ Hedef: `/opt/mcht/webtasarimajansi`, Compose projesi `webtasarimajansi`. Aynı s
 |---|---|---|
 | Web (Next.js) | `webtasarimajansi-web` | yalnızca `127.0.0.1:3400` (host Nginx) |
 | PostgreSQL 16 | `webtasarimajansi-db` | host portu yok, `webtasarimajansi-db-network` (internal) |
-| SEO ajanı worker | `webtasarimajansi-worker` | kuyruğu işler (retry, kurtarma, kilit) |
-| Zamanlayıcı | `webtasarimajansi-scheduler` | işleri kuyruğa koyar; internete çıkışı yok |
+| SEO ajanı worker | `webtasarimajansi-worker` | zamanlayıcı + kuyruk tek süreçte, iki bağımsız döngü (retry, kurtarma, kilit); önceden derlenmiş `dist/worker.mjs` |
 | migrate / builder | tek seferlik (`--profile ops`) | migration+seed / DB'ye bağlı üretim derlemesi |
 
 Redis kullanılmıyor (kuyruk ve kilitler PostgreSQL'de). Volume'ler: `webtasarimajansi_postgres_data`, `webtasarimajansi_media`. Tüm servisler `restart: unless-stopped`, bellek sınırlı.
+
+**Bellek** (Linux'ta ölçüldü, aynı yük): web ~370 MB (`MALLOC_ARENA_MAX=2` ile; önce ~450), worker boşta ~165 MB / iş yükünde tepe ~235 MB
+(önce ayrı worker + scheduler 500 MB). Web'e Node heap sınırı verilmez: ölçümde kazanç sağlamadı, 128 MB'ta sunucu yük altında çöktü.
 
 **Adımlar** (DNS A kaydı `webtasarimajansi.net` ve `www` → sunucu IP'si olduktan sonra):
 
