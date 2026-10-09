@@ -98,8 +98,9 @@ services:
       WORKER_ROLE: both
     depends_on: { db: { condition: service_healthy }, web: { condition: service_started } }
     networks: [webtasarimajansi-db-network, webtasarimajansi-network]
-    # Önceden derlenmiş worker: boşta ~165 MB, tam iş yükünde tepe ~235 MB (eskiden worker + scheduler 500 MB)
-    mem_limit: 512m
+    # Önceden derlenmiş worker: boşta ~165 MB, tam iş yükünde tepe ~235 MB (eskiden worker + scheduler 500 MB).
+    # Sınır (tavan) üretim verisiyle tepe ölçülene kadar geniş tutulur; aşılırsa iki döngü birlikte yeniden başlar.
+    mem_limit: 768m
     cpus: 1.0
     logging: *logging
 

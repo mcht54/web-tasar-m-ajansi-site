@@ -75,6 +75,13 @@ describe("nginx", () => {
     expect(directives).not.toMatch(/proxy_set_header Connection "upgrade"/);
     for (const t of ["proxy_connect_timeout", "proxy_send_timeout", "proxy_read_timeout"]) expect(directives).toMatch(new RegExp(`${t} \\d+s;`));
   });
+
+  it("ortak 404 adresini bildiren iç başlık ziyaretçiye gönderilmez", () => {
+    const directives = nginx.split("\n").map((l) => l.replace(/#.*/, "")).join("\n");
+    const location = directives.slice(directives.lastIndexOf("location / {")); // uygulamaya proxy yapan blok
+    expect(location).toContain("proxy_pass http://127.0.0.1:3400;");
+    expect(location.slice(0, location.indexOf("}"))).toContain("proxy_hide_header x-middleware-rewrite;");
+  });
 });
 
 describe("dağıtım betikleri", () => {
