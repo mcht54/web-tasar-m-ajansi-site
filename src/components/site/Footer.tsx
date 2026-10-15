@@ -45,6 +45,11 @@ export function Footer({ nav, settings }: { nav: NavLinks; settings: AllSettings
               {address && <p>{address}</p>}
             </address>
           )}
+          {/* Kardeş ürün: aynı ekibin ücretsiz dijital görünürlük analizi */}
+          <p className="mt-4 text-sm text-snow/70">
+            İşletmenizin web sitesini, Google profilini ve Instagram&apos;ını ücretsiz ölçün:{" "}
+            <a href="https://markakarnem.com.tr/" className="text-snow underline underline-offset-4 hover:text-signal-2">Ücretsiz dijital karne · MarkaKarnem</a>
+          </p>
           {social.length > 0 && (
             <ul className="mt-4 flex flex-wrap gap-3 text-sm">
               {social.map(([k, v]) => (
