@@ -63,7 +63,10 @@ export function Footer({ nav, settings }: { nav: NavLinks; settings: AllSettings
         {col("Kurumsal", nav.footerCompany)}
       </div>
       <div className="border-t border-white/10">
-        <p className="mx-auto max-w-7xl px-4 py-6 text-xs text-snow/40 sm:px-6">© {new Date().getFullYear()} {b.legalName || b.name || settings.site.siteName}</p>
+        <p className="mx-auto max-w-7xl px-4 py-6 text-xs text-snow/40 sm:px-6">
+          © {new Date().getFullYear()} {b.legalName || b.name || settings.site.siteName} ·{" "}
+          <a href="https://www.mchttasarim.com.tr/" className="underline-offset-4 hover:text-snow hover:underline">Mchttasarım Reklam Ajansı</a> markasıdır
+        </p>
       </div>
     </footer>
   );

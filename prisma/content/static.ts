@@ -121,6 +121,40 @@ export const staticPages: (SeedPage & { type: "STATIC" | "BLOG_INDEX" })[] = [
 Projenizi konuşmak için [teklif formunu](/teklif-al) doldurabilir veya [iletişim](/iletisim) sayfasındaki kanallardan bize ulaşabilirsiniz.`,
   },
   {
+    // Kardeş markalar: aynı ekibin konuya göre ayrılmış siteleri (görünür, açıklamalı bağlantılar)
+    type: "STATIC",
+    path: "/markalarimiz",
+    name: "Markalarımız",
+    seoTitle: "Markalarımız | Mchttasarım Reklam Ajansı",
+    metaDescription:
+      "Web Tasarım Ajansı, Mchttasarım Reklam Ajansı'nın markasıdır. Matbaa, tabela, promosyon ve online baskı alanındaki diğer markalarımızı tanıyın.",
+    h1: "Markalarımız",
+    intro:
+      "Web Tasarım Ajansı, Adapazarı merkezli Mchttasarım Reklam Ajansı'nın web tasarım ve SEO markasıdır. Aynı ekip; matbaa, tabela, promosyon ve dijital reklam işlerini de yürütür. Her hizmet alanını ayrıntılı anlatabilmek için konusuna göre ayrılmış sitelerimiz var.",
+    body: `## Reklam ajansı
+
+- [mchttasarim.com.tr](https://www.mchttasarim.com.tr/) — Adapazarı'ndaki ana ajansımız. Web tasarım, matbaa, tabela, logo ve dijital reklam işlerini tek ekipte planlar ve üretir.
+- [Sakarya'daki reklam ajansımız](https://sakaryareklamajans.com.tr/) — SEO, Google Ads, sosyal medya ve kurumsal kimlik hizmetlerimizi süreç ve fiyat ayrıntısıyla anlattığımız ajans sitemiz.
+- [sakaryareklamajans.com](https://www.sakaryareklamajans.com/) — Grafik tasarım, kurumsal kimlik, davetiye ve promosyon çalışmalarımızdan örnekler ve blog yazıları.
+
+## Web tasarım
+
+- [Web Tasarım Sakarya](https://www.webtasarimsakarya.tr/) — Sakarya ve Adapazarı'ndaki işletmeler için kurumsal web sitesi ve e-ticaret çözümleri.
+
+## Tabela ve baskı
+
+- [sakaryareklamci.tr](https://www.sakaryareklamci.tr/) — Tabela, matbaa, logo ve davetiye gibi baskıya dair işler için başvurulan yerel reklamcı sitemiz.
+
+## Online sipariş
+
+- [mchtmagaza.com.tr](https://www.mchtmagaza.com.tr/) — Davetiye, kartvizit, broşür, iş kıyafeti ve bayrak gibi ürünleri online tasarlayıp fiyatını hemen görebileceğiniz mağazamız.
+- [logolu promosyon ürünlerimiz](https://sakaryapromosyon.com.tr/) — Logolu kalem, kupa, ajanda, çanta ve kurumsal hediyeler; logonuzu ürün üzerinde ücretsiz önizleyebilirsiniz.
+
+## Web sitenizi basılı işlerinizle birlikte planlayın
+
+Yeni bir web sitesi çoğu zaman kartvizit, broşür ya da tabela yenilemesiyle aynı döneme denk gelir. Logonuzu, renklerinizi ve QR kodunuzu bütün bu işlerde aynı ekiple tutarlı kullanmak isterseniz [teklif formundan](/teklif-al) birlikte konuşabiliriz.`,
+  },
+  {
     type: "STATIC",
     path: "/kvkk-aydinlatma-metni",
     name: "KVKK Aydınlatma Metni",
