@@ -215,6 +215,7 @@ export function siteNav(graph: SiteGraph, navServiceIds: Set<string>): NavLinks 
       .map((n) => ({ path: n.path, label: n.crumb })),
     footerCompany: [
       ...pick("/hakkimizda", "Hakkımızda"),
+      ...pick("/markalarimiz", "Markalarımız"),
       ...pick("/teklif-al", "Teklif Al"),
       ...pick("/iletisim", "İletişim"),
       ...pick("/blog", "Rehber"),
