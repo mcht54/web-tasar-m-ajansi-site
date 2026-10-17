@@ -150,6 +150,10 @@ Projenizi konuşmak için [teklif formunu](/teklif-al) doldurabilir veya [ileti�
 - [mchtmagaza.com.tr](https://www.mchtmagaza.com.tr/) — Davetiye, kartvizit, broşür, iş kıyafeti ve bayrak gibi ürünleri online tasarlayıp fiyatını hemen görebileceğiniz mağazamız.
 - [logolu promosyon ürünlerimiz](https://sakaryapromosyon.com.tr/) — Logolu kalem, kupa, ajanda, çanta ve kurumsal hediyeler; logonuzu ürün üzerinde ücretsiz önizleyebilirsiniz.
 
+## Ücretsiz analiz
+
+- [MarkaKarnem](https://markakarnem.com.tr/) — Web sitenizi, Google İşletme Profilinizi ve Instagram hesabınızı 52 kontrolle ücretsiz ölçen dijital görünürlük karnesi.
+
 ## Web sitenizi basılı işlerinizle birlikte planlayın
 
 Yeni bir web sitesi çoğu zaman kartvizit, broşür ya da tabela yenilemesiyle aynı döneme denk gelir. Logonuzu, renklerinizi ve QR kodunuzu bütün bu işlerde aynı ekiple tutarlı kullanmak isterseniz [teklif formundan](/teklif-al) birlikte konuşabiliriz.`,
