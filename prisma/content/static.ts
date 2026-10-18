@@ -127,7 +127,7 @@ Projenizi konuşmak için [teklif formunu](/teklif-al) doldurabilir veya [ileti�
     name: "Markalarımız",
     seoTitle: "Markalarımız | Mchttasarım Reklam Ajansı",
     metaDescription:
-      "Web Tasarım Ajansı, Mchttasarım Reklam Ajansı'nın markasıdır. Matbaa, tabela, promosyon ve online baskı alanındaki diğer markalarımızı tanıyın.",
+      "Web Tasarım Ajansı, Mchttasarım Reklam Ajansı'nın markasıdır. Matbaa, baskı, promosyon, davetiye ve iş kıyafeti alanındaki diğer markalarımızı tanıyın.",
     h1: "Markalarımız",
     intro:
       "Web Tasarım Ajansı, Adapazarı merkezli Mchttasarım Reklam Ajansı'nın web tasarım ve SEO markasıdır. Aynı ekip; matbaa, tabela, promosyon ve dijital reklam işlerini de yürütür. Her hizmet alanını ayrıntılı anlatabilmek için konusuna göre ayrılmış sitelerimiz var.",
@@ -136,23 +136,30 @@ Projenizi konuşmak için [teklif formunu](/teklif-al) doldurabilir veya [ileti�
 - [mchttasarim.com.tr](https://www.mchttasarim.com.tr/) — Adapazarı'ndaki ana ajansımız. Web tasarım, matbaa, tabela, logo ve dijital reklam işlerini tek ekipte planlar ve üretir.
 - [Sakarya'daki reklam ajansımız](https://sakaryareklamajans.com.tr/) — SEO, Google Ads, sosyal medya ve kurumsal kimlik hizmetlerimizi süreç ve fiyat ayrıntısıyla anlattığımız ajans sitemiz.
 - [sakaryareklamajans.com](https://www.sakaryareklamajans.com/) — Grafik tasarım, kurumsal kimlik, davetiye ve promosyon çalışmalarımızdan örnekler ve blog yazıları.
+- [adareklam.tr](https://www.adareklam.tr/) — Adapazarı'nda dijital reklam, web tasarım, matbaa ve tabela hizmetleri.
 
 ## Web tasarım
 
 - [Web Tasarım Sakarya](https://www.webtasarimsakarya.tr/) — Sakarya ve Adapazarı'ndaki işletmeler için kurumsal web sitesi ve e-ticaret çözümleri.
 
-## Tabela ve baskı
+## Matbaa ve baskı
 
 - [sakaryareklamci.tr](https://www.sakaryareklamci.tr/) — Tabela, matbaa, logo ve davetiye gibi baskıya dair işler için başvurulan yerel reklamcı sitemiz.
+- [matbaa ve baskı hizmetlerimiz](https://www.sakaryamatbaa.tr/) — Kartvizit, broşür, afiş ve davetiye gibi basılı işler için matbaa sitemiz.
+- [Adapazarı Matbaa](https://www.adapazarimatbaa.tr/) — Adapazarı'nda kartvizit, broşür, katalog ve davetiye baskısı.
+- [sakaryabaski.tr](https://www.sakaryabaski.tr/) — Broşür, afiş, branda ve etiket baskısı için baskı sitemiz.
+- [Kocaeli'deki baskı hizmetimiz](https://www.kocaelibaski.tr/) — Kocaeli'deki firmalar için matbaa, grafik tasarım ve web tasarım hizmetleri.
 
-## Online sipariş
+## Ürünler ve sipariş
 
-- [mchtmagaza.com.tr](https://www.mchtmagaza.com.tr/) — Davetiye, kartvizit, broşür, iş kıyafeti ve bayrak gibi ürünleri online tasarlayıp fiyatını hemen görebileceğiniz mağazamız.
-- [logolu promosyon ürünlerimiz](https://sakaryapromosyon.com.tr/) — Logolu kalem, kupa, ajanda, çanta ve kurumsal hediyeler; logonuzu ürün üzerinde ücretsiz önizleyebilirsiniz.
+- [MCHT Mağaza](https://www.mchtmagaza.com.tr/) — Davetiye, kartvizit, broşür, iş kıyafeti ve bayrak gibi ürünleri online tasarlayıp fiyatını hemen görebileceğiniz mağazamız.
+- [sakaryapromosyon.com.tr](https://sakaryapromosyon.com.tr/) — Logolu kalem, kupa, ajanda, çanta ve kurumsal hediyeler; logonuzu ürün üzerinde ücretsiz önizleyebilirsiniz.
+- [düğün ve nişan davetiyeleri](https://www.davetiyeler.tr/) — Düğün, nişan ve söz davetiyesi modellerini kişiye özel sipariş edebileceğiniz davetiye mağazamız.
+- [Sakarya İş Elbiseleri](https://www.sakaryaiselbiseleri.com/) — Her sektöre uygun iş kıyafeti, iş tulumu ve logolu kurumsal giyim.
 
 ## Ücretsiz analiz
 
-- [MarkaKarnem](https://markakarnem.com.tr/) — Web sitenizi, Google İşletme Profilinizi ve Instagram hesabınızı 52 kontrolle ücretsiz ölçen dijital görünürlük karnesi.
+- [ücretsiz dijital karne](https://markakarnem.com.tr/) — Web sitenizi, Google İşletme Profilinizi ve Instagram hesabınızı 52 kontrolle ücretsiz ölçen dijital görünürlük karnesi.
 
 ## Web sitenizi basılı işlerinizle birlikte planlayın
 
