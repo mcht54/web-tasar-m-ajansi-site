@@ -136,7 +136,7 @@ function Hero({ page, serviceNames, avgSeo, scored }: { page: Props["page"]; ser
             <p className="rise mt-5 max-w-xl text-lg leading-relaxed text-snow/70" style={{ "--d": "260ms" } as React.CSSProperties}>{page.intro}</p>
           )}
           <div className="rise mt-10 flex flex-wrap items-center gap-3" style={{ "--d": "340ms" } as React.CSSProperties}>
-            <Link href="/teklif-al" className="cta-magnet inline-flex items-center gap-2 rounded-full bg-signal px-7 py-4 font-semibold text-white">
+            <Link href="/teklif-al" className="cta-magnet inline-flex items-center gap-2 rounded-full bg-[#d63a10] px-7 py-4 font-semibold text-white">
               Projenizi Başlatalım <span aria-hidden className="arrow">→</span>
             </Link>
             <Link href="#calismalar" className="inline-flex items-center gap-2 rounded-full border border-white/20 px-7 py-4 font-semibold text-snow transition-colors hover:border-white hover:bg-white/5">
@@ -749,7 +749,7 @@ function FinalCta({ whatsapp }: { whatsapp: string }) {
           Hedeflerinizi ve varsa mevcut sitenizi konuşalım; size uygun kapsamı ve kalem kalem açıklanmış bir teklif hazırlayalım.
         </p>
         <div className="relative mt-10 flex flex-wrap justify-center gap-3">
-          <Link href="/teklif-al" className="cta-magnet inline-flex items-center gap-2 rounded-full bg-signal px-8 py-4 font-semibold text-white">
+          <Link href="/teklif-al" className="cta-magnet inline-flex items-center gap-2 rounded-full bg-[#d63a10] px-8 py-4 font-semibold text-white">
             Projenizi Başlatalım <span aria-hidden className="arrow">→</span>
           </Link>
           <Link href="/teklif-al#on-analiz" className="rounded-full border border-white/20 px-8 py-4 font-semibold text-snow hover:border-white">Ücretsiz Ön Analiz</Link>

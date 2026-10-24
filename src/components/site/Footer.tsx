@@ -12,7 +12,7 @@ export function Footer({ nav, settings }: { nav: NavLinks; settings: AllSettings
   const col = (title: string, links: { path: string; label: string }[]) =>
     links.length > 0 && (
       <div>
-        <p className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-snow/40">{title}</p>
+        <p className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-snow/60">{title}</p>
         <ul className="space-y-2 text-sm">
           {links.map((l) => (
             <li key={l.path}><Link href={l.path} className="text-snow/70 transition-colors hover:text-snow">{l.label}</Link></li>
@@ -27,7 +27,7 @@ export function Footer({ nav, settings }: { nav: NavLinks; settings: AllSettings
           <p className="max-w-2xl font-display text-[clamp(2.2rem,1.5rem+3vw,4.2rem)] leading-[0.98] tracking-[-0.02em]">
             İyi bir web sitesi <span className="italic text-signal-2">sessizce satış yapar.</span>
           </p>
-          <Link href="/teklif-al" className="cta-magnet inline-flex items-center gap-2 rounded-full bg-signal px-7 py-4 font-semibold text-white">
+          <Link href="/teklif-al" className="cta-magnet inline-flex items-center gap-2 rounded-full bg-[#d63a10] px-7 py-4 font-semibold text-white">
             Projenizi Başlatalım <span aria-hidden className="arrow">→</span>
           </Link>
         </div>
@@ -63,7 +63,7 @@ export function Footer({ nav, settings }: { nav: NavLinks; settings: AllSettings
         {col("Kurumsal", nav.footerCompany)}
       </div>
       <div className="border-t border-white/10">
-        <p className="mx-auto max-w-7xl px-4 py-6 text-xs text-snow/40 sm:px-6">
+        <p className="mx-auto max-w-7xl px-4 py-6 text-xs text-snow/60 sm:px-6">
           © {new Date().getFullYear()} {b.legalName || b.name || settings.site.siteName} ·{" "}
           <a href="https://www.mchttasarim.com.tr/" className="underline-offset-4 hover:text-snow hover:underline">Mchttasarım Reklam Ajansı</a> markasıdır
         </p>

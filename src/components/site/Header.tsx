@@ -44,7 +44,7 @@ export function Header({ nav, siteName, logo, phone }: Props) {
               {phone}
             </a>
           )}
-          <Link href="/teklif-al" className="cta-magnet hidden items-center gap-1.5 rounded-full bg-signal px-4 py-2.5 text-sm font-semibold text-white sm:inline-flex">
+          <Link href="/teklif-al" className="cta-magnet hidden items-center gap-1.5 rounded-full bg-[#d63a10] px-4 py-2.5 text-sm font-semibold text-white sm:inline-flex">
             Projenizi Başlatalım <span aria-hidden className="arrow">→</span>
           </Link>
           <details className="group relative lg:hidden">

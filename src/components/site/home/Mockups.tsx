@@ -173,7 +173,7 @@ export function PhoneScreens({ title, items }: { title: string; items: string[] 
 
       {/* 2) Hizmetler */}
       <div className={`${screen} bg-[#f4f2ec] text-[#14161a]`}>
-        <p className="text-[3.4cqw] font-semibold uppercase tracking-[.2em] text-[#ff4d1f]">Hizmetler</p>
+        <p className="text-[3.4cqw] font-semibold uppercase tracking-[.2em] text-[#a82c0c]">Hizmetler</p>
         <p className="mt-[1.4cqw] font-display text-[8.4cqw] leading-none">Ne yapıyoruz?</p>
         <div className="relative mt-[4cqw] overflow-hidden rounded-[5cqw] bg-[#0a0b0f] p-[4cqw] text-white">
           <Orb hue="signal" className="absolute -right-[10%] -top-[30%] w-[55%] text-[2cqw]" />
@@ -219,7 +219,7 @@ export function SectorScreen({ items }: { items: string[] }) {
   const bgs = ["linear-gradient(140deg,#1a0d08,#3a1407)", "linear-gradient(140deg,#0c0e2a,#1d2170)", "linear-gradient(140deg,#0f1a05,#2c4a0a)", "linear-gradient(140deg,#2a0716,#5a0f30)", "linear-gradient(140deg,#0c0e2a,#2a1d70)", "linear-gradient(140deg,#1a0d08,#4a1a07)"];
   return (
     <div className="flex h-full flex-col bg-[#f4f2ec] px-[6cqw] pb-[7cqw] pt-[15cqw] text-[#14161a]">
-      <p className="text-[3.4cqw] font-semibold uppercase tracking-[.2em] text-[#ff4d1f]">Sektörler</p>
+      <p className="text-[3.4cqw] font-semibold uppercase tracking-[.2em] text-[#a82c0c]">Sektörler</p>
       <p className="mt-[1.4cqw] font-display text-[8cqw] leading-none">Size özel</p>
       <div className="mt-[4cqw] grid grid-cols-2 gap-[3cqw]">
         {items.slice(0, 6).map((t, i) => (

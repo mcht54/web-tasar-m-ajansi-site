@@ -184,7 +184,7 @@ html.motion [data-reveal="clip"]:not(.is-in) { clip-path: inset(0 0 100% 0); opa
 .build-layer { opacity: .1; transform: translate3d(0, 12px, 0) scale(.98); transition: opacity .6s var(--ease), transform .6s var(--ease); }
 .build-layer.on, html:not(.motion) .build-layer { opacity: 1; transform: none; }
 .step { transition: opacity .4s, color .4s; }
-html.motion .step:not(.on) { opacity: .35; }
+html.motion .step:not(.on) { opacity: .7; } /* erişilebilirlik: pasif adım metni de okunur kontrastta (WCAG AA) */
 
 /* SERP (temsili): açığa çıkınca vurgulu sonuç üste yükselir */
 .serp-item { transition: transform 1.6s var(--ease) .5s, box-shadow .6s; transform: translate3d(0, calc(var(--from, 0) * 100%), 0); }
