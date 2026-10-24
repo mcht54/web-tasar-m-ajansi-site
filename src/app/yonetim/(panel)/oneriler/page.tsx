@@ -3,13 +3,16 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/session";
 import { getSettingsFresh } from "@/lib/settings";
 import type { Prisma } from "@/generated/prisma/client";
-import { CATEGORY_LABELS, EXPECTED_IMPACT, RISK_LEVEL_LABELS, STATUS_LABELS, autoApplyBlocker, remainingText, type Category, type RiskLevel } from "@/lib/proposals/policy";
+import { CATEGORY_LABELS, EXPECTED_IMPACT, RISK_LEVEL_LABELS, STATUS_LABELS, autoApplyBlocker, hasChanges, remainingText, type Category, type RiskLevel } from "@/lib/proposals/policy";
 import { describeChanges } from "@/lib/proposals/view";
 import { ACTION_LABELS, type ActionType } from "@/lib/autopilot/decide";
 import { Badge, Card, Notice, PageTitle, fmtDate } from "@/components/admin/ui";
 import { Countdown } from "@/components/admin/Countdown";
 import { JobButton } from "@/components/admin/JobButton";
-import { applyNowAction, rejectProposalAction, rollbackProposalAction } from "./actions";
+import { applyNowAction, rejectProposalAction, reopenAndApplyAction, rollbackProposalAction } from "./actions";
+
+/** Geçmişteki öneriler (reddedilen, geri alınan, başarısız, atlanan) elle tekrar yayına alınabilir. */
+const HISTORY_REOPENABLE = new Set(["rejected", "rolled_back", "failed", "skipped"]);
 
 export const metadata = { title: "Öneriler" };
 
@@ -73,6 +76,8 @@ function ProposalCard({ a, now, back }: { a: Row; now: Date; back: string }) {
   const blocker = a.status === "pending_approval" ? autoApplyBlocker(a) : null;
   const expired = a.expiresAt ? a.expiresAt.getTime() <= now.getTime() : false;
   const risk = (a.riskLevel ?? "HIGH") as RiskLevel;
+  // Somut değişikliği olan öneri elle onaylanabilir/tekrar yayına alınabilir (ön koşulu eksik olanın değişikliği yoktur)
+  const applicable = hasChanges(a.proposedChanges as Parameters<typeof hasChanges>[0]);
   const hidden = (name: string, value: string) => <input type="hidden" name={name} value={value} />;
   return (
     <Card>
@@ -120,7 +125,13 @@ function ProposalCard({ a, now, back }: { a: Row; now: Date; back: string }) {
             </>
           )}
           {(a.status === "needs_approval" || a.status === "blocked") && (
-            <form action={rejectProposalAction}>{hidden("id", a.id)}{hidden("back", back)}<button className="rounded-full border border-line px-4 py-1.5">Reddet</button></form>
+            <>
+              {applicable && <form action={reopenAndApplyAction}>{hidden("id", a.id)}{hidden("back", back)}<button className="rounded-full bg-ink px-4 py-1.5 font-semibold text-paper" data-action="approve-apply">Onayla ve Uygula</button></form>}
+              <form action={rejectProposalAction}>{hidden("id", a.id)}{hidden("back", back)}<button className="rounded-full border border-line px-4 py-1.5">Reddet</button></form>
+            </>
+          )}
+          {HISTORY_REOPENABLE.has(a.status) && applicable && (
+            <form action={reopenAndApplyAction}>{hidden("id", a.id)}{hidden("back", back)}<button className="rounded-full bg-ink px-4 py-1.5 font-semibold text-paper" data-action="republish">Tekrar Yayına Al</button></form>
           )}
           <Link href={`/yonetim/oneriler/${a.id}`} className="rounded-full border border-line px-4 py-1.5">Detay</Link>
           {views.length > 0 && <Link href={`/yonetim/oneriler/${a.id}#degisiklikler`} className="rounded-full border border-line px-4 py-1.5">Değişiklikleri Gör</Link>}

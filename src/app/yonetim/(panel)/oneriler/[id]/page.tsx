@@ -2,11 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/session";
-import { CATEGORY_LABELS, EXPECTED_IMPACT, RISK_LEVEL_LABELS, STATUS_LABELS, remainingText, type Category, type RiskLevel } from "@/lib/proposals/policy";
+import { CATEGORY_LABELS, EXPECTED_IMPACT, RISK_LEVEL_LABELS, STATUS_LABELS, hasChanges, remainingText, type Category, type RiskLevel } from "@/lib/proposals/policy";
+import { REOPENABLE_STATUSES } from "@/lib/proposals/lifecycle";
 import { describeChanges } from "@/lib/proposals/view";
 import { Badge, Card, Notice, PageTitle, Table, fmtDate } from "@/components/admin/ui";
 import { Countdown } from "@/components/admin/Countdown";
-import { applyNowAction, rejectProposalAction, rollbackProposalAction } from "../actions";
+import { applyNowAction, rejectProposalAction, reopenAndApplyAction, rollbackProposalAction } from "../actions";
 
 export const metadata = { title: "Öneri ayrıntısı" };
 
@@ -70,6 +71,9 @@ export default async function ProposalDetail(props: PageProps<"/yonetim/oneriler
                   <form action={applyNowAction}>{hidden("id", a.id)}{hidden("back", back)}<button className="rounded-full bg-ink px-5 py-2 font-semibold text-paper">Şimdi Uygula</button></form>
                   <form action={rejectProposalAction}>{hidden("id", a.id)}{hidden("back", back)}<button className="rounded-full border border-line px-5 py-2">Reddet</button></form>
                 </>
+              )}
+              {(REOPENABLE_STATUSES as readonly string[]).includes(a.status) && hasChanges(a.proposedChanges as Parameters<typeof hasChanges>[0]) && (
+                <form action={reopenAndApplyAction}>{hidden("id", a.id)}{hidden("back", back)}<button className="rounded-full bg-ink px-5 py-2 font-semibold text-paper">{a.status === "needs_approval" || a.status === "blocked" ? "Onayla ve Uygula" : "Tekrar Yayına Al"}</button></form>
               )}
               {a.status === "applied" && <form action={rollbackProposalAction}>{hidden("id", a.id)}{hidden("back", back)}<button className="rounded-full border border-line px-5 py-2">Rollback (geri al)</button></form>}
               {a.pageId && <Link href={`/yonetim/sayfalar/${a.pageId}`} className="rounded-full border border-line px-5 py-2">Sayfa ve sürüm geçmişi</Link>}

@@ -498,6 +498,32 @@ export async function rejectProposal(user: SessionUser, id: string) {
   await db.auditLog.create({ data: { userId: user.id === AUTOPILOT_USER.id ? null : user.id, action: "proposal.reject", entity: "autopilotAction", entityId: id } });
 }
 
+// ─── Yeniden aç (insan kararı / geçmiş → onay bekleyen) ─────────────────────
+
+/** Elle yeniden açılabilen durumlar. Uygulama yine tam hattan geçer (doğrulama, eskime, kalite kapısı, sürüm, geri alma). */
+export const REOPENABLE_STATUSES = ["needs_approval", "blocked", "rejected", "rolled_back", "failed", "skipped"] as const;
+
+/**
+ * İnsan kararıyla öneriyi yeniden "onay bekliyor"a alır. Otomatik uygulamaya girmez (autoApply=false, süre yok):
+ * yalnızca elle "uygula" ile yayına çıkar. Haftalık otomatik sınır insan onayını bağlamaz.
+ */
+export async function reopenProposal(user: SessionUser, id: string) {
+  const a = await db.autopilotAction.findUnique({ where: { id }, select: { status: true, proposedChanges: true } });
+  if (!a || !(REOPENABLE_STATUSES as readonly string[]).includes(a.status)) throw new Error("Bu öneri yeniden açılabilir durumda değil");
+  if (!hasChanges(a.proposedChanges as Parameters<typeof hasChanges>[0])) {
+    throw new Error("Bu önerinin uygulanacak somut bir değişikliği yok; önce belirtilen ön koşul tamamlanmalı");
+  }
+  const r = await db.autopilotAction.updateMany({
+    where: { id, status: a.status },
+    data: {
+      status: "pending_approval", autoApply: false, expiresAt: null, nextAttemptAt: null, attempts: 0, error: null, rejectedAt: null,
+      qualityNotes: `Yeniden açıldı (${user.name}; önceki durum: ${a.status})`,
+    },
+  });
+  if (r.count !== 1) throw new Error("Öneri bu sırada değişti; sayfayı yenileyip tekrar deneyin");
+  await db.auditLog.create({ data: { userId: user.id === AUTOPILOT_USER.id ? null : user.id, action: "proposal.reopen", entity: "autopilotAction", entityId: id, detail: { from: a.status } } });
+}
+
 /** Geri al: değişen alanlar önceki değerine döner (sonradan elle değiştirilmişse reddedilir). */
 export async function rollbackProposal(user: SessionUser, id: string): Promise<string[]> {
   const a = await db.autopilotAction.findUniqueOrThrow({ where: { id } });
