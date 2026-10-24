@@ -4,7 +4,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { saveSetting } from "@/lib/settings";
-import { applyProposal, clock, createProposal, duplicateReason, rejectProposal, rollbackProposal, runAutoApply } from "@/lib/proposals/lifecycle";
+import { applyProposal, clock, createProposal, duplicateReason, rejectProposal, reopenProposal, rollbackProposal, runAutoApply } from "@/lib/proposals/lifecycle";
 import { autoApplyBlocker, riskLevelFor } from "@/lib/proposals/policy";
 import { aiHooks } from "@/lib/autopilot/execute";
 import { dueJobs } from "@/lib/autopilot/scheduler";
@@ -216,6 +216,62 @@ describe("48 saatlik yaşam döngüsü", () => {
     const r = await applyProposal(a.id, { via: "manual", user: admin, fetchImpl: null });
     expect(r.status).toBe("failed");
     expect((await page()).metaDescription).toBe(original);
+  });
+});
+
+describe("yeniden açma: insan kararı / geçmiş → tekrar yayına alma", () => {
+  it("I: reddedilen öneri yeniden açılıp elle uygulanır; denetim loguna yazılır", async () => {
+    const a = await pending();
+    await rejectProposal(admin, a.id);
+    await reopenProposal(admin, a.id);
+    const open = await db.autopilotAction.findUniqueOrThrow({ where: { id: a.id } });
+    expect(open.status).toBe("pending_approval");
+    expect(open.autoApply).toBe(false);
+    expect(open.expiresAt).toBeNull();
+    expect(await db.auditLog.count({ where: { entityId: a.id, action: "proposal.reopen" } })).toBe(1);
+    const r = await applyProposal(a.id, { via: "manual", user: admin, fetchImpl: null });
+    expect(r.status, r.note).toBe("applied");
+    expect((await page()).metaDescription).toBe(NEW_META);
+  });
+
+  it("J: geri alınan öneri tekrar yayına alınır", async () => {
+    const a = await pending();
+    expect((await applyProposal(a.id, { via: "manual", user: admin, fetchImpl: null })).status).toBe("applied");
+    await rollbackProposal(admin, a.id);
+    expect((await page()).metaDescription).toBe(original);
+    await reopenProposal(admin, a.id);
+    const r = await applyProposal(a.id, { via: "manual", user: admin, fetchImpl: null });
+    expect(r.status, r.note).toBe("applied");
+    expect((await page()).metaDescription).toBe(NEW_META);
+    expect((await db.autopilotAction.findUniqueOrThrow({ where: { id: a.id } })).rollbackAvailable).toBe(true);
+  });
+
+  it("K: 'insan kararı' (haftalık sınır) bekleyen öneri onaylanınca uygulanır", async () => {
+    const a = await pending();
+    await db.autopilotAction.update({ where: { id: a.id }, data: { status: "needs_approval", autoApply: false, qualityNotes: "Haftalık otomatik değişiklik sınırı doldu" } });
+    await reopenProposal(admin, a.id);
+    expect((await applyProposal(a.id, { via: "manual", user: admin, fetchImpl: null })).status).toBe("applied");
+  });
+
+  it("L: yeniden açılan öneri süre/otomatik uygulamaya girmez; yalnızca elle uygulanır", async () => {
+    const a = await pending();
+    await rejectProposal(admin, a.id);
+    await reopenProposal(admin, a.id);
+    clock.now = () => new Date(T0.getTime() + 500 * H);
+    expect((await runAutoApply({ fetchImpl: null })).applied).toBe(0);
+    expect((await page()).metaDescription).toBe(original);
+  });
+
+  it("M: somut değişikliği olmayan ya da uygulanmış öneri yeniden açılamaz", async () => {
+    const p = await page();
+    const blocked = await db.autopilotAction.create({
+      data: { type: "FAQ", risk: "AUTO", status: "blocked", score: 10, title: "ön koşul eksik testi", reason: "test", pageId: p.id, category: "CONTENT", source: "test", riskLevel: "LOW", fingerprint: `TEST:${Math.random()}`, qualityNotes: "Ön koşul eksik" },
+    });
+    await expect(reopenProposal(admin, blocked.id)).rejects.toThrow(/somut bir değişikliği yok/);
+    expect((await db.autopilotAction.findUniqueOrThrow({ where: { id: blocked.id } })).status).toBe("blocked");
+    const a = await pending();
+    expect((await applyProposal(a.id, { via: "manual", user: admin, fetchImpl: null })).status).toBe("applied");
+    await expect(reopenProposal(admin, a.id)).rejects.toThrow(/yeniden açılabilir durumda değil/);
   });
 });
 

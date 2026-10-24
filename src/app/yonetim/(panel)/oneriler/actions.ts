@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/session";
-import { applyProposal, rejectProposal, rollbackProposal } from "@/lib/proposals/lifecycle";
+import { applyProposal, rejectProposal, reopenProposal, rollbackProposal } from "@/lib/proposals/lifecycle";
 
 const back = (f: FormData) => {
   const b = String(f.get("back") ?? "/yonetim/oneriler");
@@ -18,6 +18,23 @@ export async function applyNowAction(f: FormData) {
   const user = await requireUser("seo");
   const r = await applyProposal(String(f.get("id")), { via: "manual", user });
   // Başarı yalnızca veritabanından doğrulanmış gerçek değişiklikte
+  if (!r.ok) go(f, "hata", `Uygulanmadı: ${r.note}`);
+  go(f, "ok", `${r.note} — sürüm geçmişine ve denetim loguna yazıldı.`);
+}
+
+/**
+ * Onayla ve uygula / tekrar yayına al: "İnsan kararı", "Uygulanamaz" ve geçmişteki (reddedilen, geri alınan,
+ * başarısız, atlanan) öneriyi yeniden açar ve aynı uygulama hattından hemen uygular.
+ */
+export async function reopenAndApplyAction(f: FormData) {
+  const user = await requireUser("seo");
+  const id = String(f.get("id"));
+  try {
+    await reopenProposal(user, id);
+  } catch (e) {
+    go(f, "hata", e instanceof Error ? e.message : String(e));
+  }
+  const r = await applyProposal(id, { via: "manual", user });
   if (!r.ok) go(f, "hata", `Uygulanmadı: ${r.note}`);
   go(f, "ok", `${r.note} — sürüm geçmişine ve denetim loguna yazıldı.`);
 }
