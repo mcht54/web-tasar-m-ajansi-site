@@ -108,7 +108,7 @@ export function CtaBand({ title = "Projenizi konuşalım", text, whatsapp }: { t
           {text ?? "Hedeflerinizi, müşterilerinizi ve varsa mevcut sitenizi konuşalım; size uygun kapsamı ve kalem kalem açıklanmış bir teklif hazırlayalım."}
         </p>
         <div className="relative mt-8 flex flex-wrap gap-3">
-          <Link href="/teklif-al" className="cta-magnet inline-flex items-center gap-2 rounded-full bg-signal px-6 py-3.5 font-semibold text-white">Projenizi Başlatalım <span aria-hidden className="arrow">→</span></Link>
+          <Link href="/teklif-al" className="cta-magnet inline-flex items-center gap-2 rounded-full bg-[#d63a10] px-6 py-3.5 font-semibold text-white">Projenizi Başlatalım <span aria-hidden className="arrow">→</span></Link>
           <Link href="/teklif-al#on-analiz" className="rounded-full border border-white/20 px-6 py-3.5 font-semibold text-snow hover:border-white">Ücretsiz Ön Analiz</Link>
           {whatsapp && (
             <a href={`https://wa.me/${whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent("Merhaba, web siteniz üzerinden yazıyorum.")}`} rel="noopener" className="rounded-full border border-white/20 px-6 py-3.5 font-semibold text-snow hover:border-white">
