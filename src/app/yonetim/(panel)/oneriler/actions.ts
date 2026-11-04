@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/session";
-import { applyProposal, rejectProposal, reopenProposal, rollbackProposal } from "@/lib/proposals/lifecycle";
+import { applyProposal, applyProposalsBulk, rejectProposal, reopenProposal, rollbackProposal } from "@/lib/proposals/lifecycle";
 
 const back = (f: FormData) => {
   const b = String(f.get("back") ?? "/yonetim/oneriler");
@@ -37,6 +37,21 @@ export async function reopenAndApplyAction(f: FormData) {
   const r = await applyProposal(id, { via: "manual", user });
   if (!r.ok) go(f, "hata", `Uygulanmadı: ${r.note}`);
   go(f, "ok", `${r.note} — sürüm geçmişine ve denetim loguna yazıldı.`);
+}
+
+/** Toplu uygula: seçilenler ya da (kategori süzgecine göre) tüm düşük/orta riskli bekleyen öneriler. */
+export async function bulkApplyAction(f: FormData) {
+  const user = await requireUser("seo");
+  const ids = f.getAll("ids").map(String);
+  const all = f.get("kapsam") === "tumu";
+  if (!all && !ids.length) go(f, "hata", "Önce uygulanacak önerileri işaretleyin.");
+  const r = await applyProposalsBulk(user, all ? { category: String(f.get("kategori") ?? "") } : { ids });
+  const parts = [`${r.applied} öneri uygulandı`];
+  if (r.failed.length) parts.push(`${r.failed.length} başarısız (${r.failed.slice(0, 3).map((x) => `${x.title}: ${x.note}`).join("; ")})`);
+  if (r.held) parts.push(`${r.held} öneri aynı sayfa alanını değiştirdiği için bekletildi`);
+  if (r.excluded) parts.push(`${r.excluded} yüksek riskli öneri dışarıda kaldı; kendi kartından onaylanır`);
+  if (r.remaining) parts.push(`${r.remaining} öneri sırada; devam etmek için tekrar basın`);
+  go(f, r.failed.length ? "hata" : "ok", `${parts.join(" · ")}.`);
 }
 
 export async function rejectProposalAction(f: FormData) {

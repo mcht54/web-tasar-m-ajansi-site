@@ -3,13 +3,14 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth/session";
 import { getSettingsFresh } from "@/lib/settings";
 import type { Prisma } from "@/generated/prisma/client";
-import { CATEGORY_LABELS, EXPECTED_IMPACT, RISK_LEVEL_LABELS, STATUS_LABELS, autoApplyBlocker, hasChanges, remainingText, type Category, type RiskLevel } from "@/lib/proposals/policy";
+import { CATEGORY_LABELS, EXPECTED_IMPACT, RISK_LEVEL_LABELS, STATUS_LABELS, autoApplyBlocker, bulkEligible, hasChanges, remainingText, type Category, type RiskLevel } from "@/lib/proposals/policy";
 import { describeChanges } from "@/lib/proposals/view";
 import { ACTION_LABELS, type ActionType } from "@/lib/autopilot/decide";
 import { Badge, Card, Notice, PageTitle, fmtDate } from "@/components/admin/ui";
 import { Countdown } from "@/components/admin/Countdown";
 import { JobButton } from "@/components/admin/JobButton";
-import { applyNowAction, rejectProposalAction, reopenAndApplyAction, rollbackProposalAction } from "./actions";
+import { SubmitButton } from "@/components/admin/SubmitButton";
+import { applyNowAction, bulkApplyAction, rejectProposalAction, reopenAndApplyAction, rollbackProposalAction } from "./actions";
 
 /** Geçmişteki öneriler (reddedilen, geri alınan, başarısız, atlanan) elle tekrar yayına alınabilir. */
 const HISTORY_REOPENABLE = new Set(["rejected", "rolled_back", "failed", "skipped"]);
@@ -23,6 +24,8 @@ const TABS = [
   ["uygulanan", "Uygulanan", ["applied"]],
   ["gecmis", "Geçmiş", ["rejected", "failed", "rolled_back", "skipped"]],
 ] as const;
+
+const BULK_FORM = "toplu-uygula";
 
 const RISK_TONE: Record<string, "ok" | "warn" | "bad" | "muted"> = { LOW: "ok", MEDIUM: "warn", HIGH: "bad", CRITICAL: "bad" };
 const STATUS_TONE: Record<string, "ok" | "warn" | "bad" | "muted"> = { pending_approval: "warn", applying: "warn", applied: "ok", failed: "bad", blocked: "muted", needs_approval: "warn" };
@@ -45,6 +48,7 @@ export default async function Proposals(props: PageProps<"/yonetim/oneriler">) {
   const qs = (o: Record<string, string>) => `?${new URLSearchParams({ sekme: tab[0], ...(cat ? { kategori: cat } : {}), ...o })}`;
   const back = `/yonetim/oneriler${qs({})}`;
   const windowH = settings.autopilot.approvalWindowHours;
+  const eligible = rows.filter(bulkEligible).length;
   return (
     <>
       <PageTitle
@@ -62,6 +66,25 @@ export default async function Proposals(props: PageProps<"/yonetim/oneriler">) {
         <Link href={`?sekme=${tab[0]}`} className={`rounded-full px-3 py-1 ${!cat ? "bg-accent text-accent-ink" : "border border-line"}`}>Tüm kategoriler</Link>
         {Object.entries(CATEGORY_LABELS).map(([k, l]) => <Link key={k} href={`?sekme=${tab[0]}&kategori=${k}`} className={`rounded-full px-3 py-1 ${cat === k ? "bg-accent text-accent-ink" : "border border-line"}`}>{l}</Link>)}
       </div>
+      {eligible > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-line p-3 text-[13px]" data-bulk-bar>
+          <form id={BULK_FORM} action={bulkApplyAction}>
+            <input type="hidden" name="back" value={back} />
+            <SubmitButton pending="Uygulanıyor…" className="rounded-full bg-ink px-4 py-1.5 font-semibold text-paper">Seçilenleri Uygula</SubmitButton>
+          </form>
+          <details className="group">
+            <summary className="cursor-pointer list-none rounded-full border border-line px-4 py-1.5 group-open:hidden">Tümünü Uygula ({eligible})</summary>
+            <form action={bulkApplyAction} className="flex flex-wrap items-center gap-2">
+              <input type="hidden" name="back" value={back} />
+              <input type="hidden" name="kapsam" value="tumu" />
+              <input type="hidden" name="kategori" value={cat} />
+              <span>{eligible} öneri yayına alınacak.</span>
+              <SubmitButton pending="Uygulanıyor…" className="rounded-full bg-ink px-4 py-1.5 font-semibold text-paper">Evet, tümünü uygula</SubmitButton>
+            </form>
+          </details>
+          <span className="text-xs text-muted">Yüksek riskli öneriler toplu uygulanmaz. Her uygulama tek tek geri alınabilir.</span>
+        </div>
+      )}
       <div className="space-y-4">
         {rows.length === 0 && <Card><p className="text-muted">Bu sekmede öneri yok.</p></Card>}
         {rows.map((a) => <ProposalCard key={a.id} a={a} now={now} back={back} />)}
@@ -85,6 +108,7 @@ function ProposalCard({ a, now, back }: { a: Row; now: Date; back: string }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
+              {bulkEligible(a) && <input type="checkbox" name="ids" value={a.id} form={BULK_FORM} aria-label={`Toplu uygulama için seç: ${a.title}`} className="h-4 w-4" />}
               <Badge tone={STATUS_TONE[a.status] ?? "muted"}>{STATUS_LABELS[a.status] ?? a.status}</Badge>
               <Badge tone={RISK_TONE[risk]}>Risk: {RISK_LEVEL_LABELS[risk] ?? risk}</Badge>
               <Badge>{CATEGORY_LABELS[a.category as Category] ?? a.category}</Badge>
