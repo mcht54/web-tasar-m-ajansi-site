@@ -4,7 +4,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { saveSetting } from "@/lib/settings";
-import { applyProposal, clock, createProposal, duplicateReason, rejectProposal, reopenProposal, rollbackProposal, runAutoApply } from "@/lib/proposals/lifecycle";
+import { applyProposal, applyProposalsBulk, clock, createProposal, duplicateReason, rejectProposal, reopenProposal, rollbackProposal, runAutoApply } from "@/lib/proposals/lifecycle";
 import { autoApplyBlocker, riskLevelFor } from "@/lib/proposals/policy";
 import { aiHooks } from "@/lib/autopilot/execute";
 import { dueJobs } from "@/lib/autopilot/scheduler";
@@ -308,5 +308,60 @@ describe("oluşturma: hazırlık + mükerrer koruma", () => {
     expect(row.expiresAt).toBeNull();
     expect(row.autoApply).toBe(false);
     await db.autopilotAction.update({ where: { id: r.id! }, data: { source: "test" } });
+  });
+});
+
+describe("toplu uygula", () => {
+  it("N: seçilenleri uygular, seçilmeyene dokunmaz; yüksek riskli dışarıda kalır", async () => {
+    const a = await pending();
+    const other = await pending({ after: `${NEW_META} Diğer.` });
+    const high = await pending({ riskLevel: "HIGH", autoApply: false, after: `${NEW_META} Riskli.` });
+    const r = await applyProposalsBulk(admin, { ids: [a.id, high.id] }, { fetchImpl: null });
+    expect(r).toMatchObject({ applied: 1, failed: [], excluded: 1 });
+    expect((await page()).metaDescription).toBe(NEW_META);
+    expect((await db.autopilotAction.findUniqueOrThrow({ where: { id: a.id } })).appliedVia).toBe("manual");
+    expect((await db.autopilotAction.findUniqueOrThrow({ where: { id: other.id } })).status).toBe("pending_approval");
+    expect((await db.autopilotAction.findUniqueOrThrow({ where: { id: high.id } })).status).toBe("pending_approval");
+  });
+
+  it("O: aynı alanı değiştiren ikinci öneri başarısız sayılmaz, bekletilir", async () => {
+    const a = await pending();
+    const b = await pending({ after: `${NEW_META} İkinci.` });
+    const r = await applyProposalsBulk(admin, { ids: [a.id, b.id] }, { fetchImpl: null });
+    expect(r).toMatchObject({ applied: 1, held: 1, failed: [] });
+    const statuses = (await db.autopilotAction.findMany({ where: { id: { in: [a.id, b.id] } } })).map((x) => x.status).sort();
+    expect(statuses).toEqual(["applied", "pending_approval"]);
+  });
+
+  it("P: biri başarısız olsa diğeri uygulanır ve hata raporlanır", async () => {
+    const bad = await pending({ after: "lorem ipsum" });
+    const p = await page();
+    const other = await db.autopilotAction.create({ data: {
+      type: "H1", risk: "AUTO", status: "pending_approval", score: 40, title: "h1 testi", reason: "test", pageId: p.id, category: "SEO", source: "test", riskLevel: "LOW", fingerprint: `TEST:${Math.random()}`,
+      proposedChanges: { pages: [{ pageId: p.id, path: p.path, changes: [{ field: "h1", before: p.h1, after: `${p.h1} Yeni` }] }] },
+    } });
+    try {
+      const r = await applyProposalsBulk(admin, { ids: [bad.id, other.id] }, { fetchImpl: null });
+      expect(r.failed.map((x) => x.title)).toEqual([bad.title]);
+      expect(r.applied, JSON.stringify(r)).toBe(1);
+      expect((await db.autopilotAction.findUniqueOrThrow({ where: { id: bad.id } })).status).toBe("failed");
+      expect((await page()).h1).toBe(`${p.h1} Yeni`);
+    } finally {
+      await db.page.update({ where: { id: p.id }, data: { h1: p.h1 } });
+    }
+  });
+
+  it("R: süre bütçesi dolunca kalanlar bekler", async () => {
+    const a = await pending();
+    const r = await applyProposalsBulk(admin, { ids: [a.id] }, { fetchImpl: null, budgetMs: 0 });
+    expect(r).toMatchObject({ applied: 0, remaining: 1 });
+    expect((await db.autopilotAction.findUniqueOrThrow({ where: { id: a.id } })).status).toBe("pending_approval");
+  });
+
+  it("S: kapsam 'tümü' yalnız o kategoriyi işler", async () => {
+    const seo = await pending();
+    const r = await applyProposalsBulk(admin, { category: "PERFORMANCE" }, { fetchImpl: null });
+    expect(r.applied).toBe(0);
+    expect((await db.autopilotAction.findUniqueOrThrow({ where: { id: seo.id } })).status).toBe("pending_approval");
   });
 });

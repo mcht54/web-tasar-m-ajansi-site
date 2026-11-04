@@ -574,6 +574,37 @@ await step("Rakipler: alan adı doğrulama + SSRF reddi; tarama hatası dürüst
   }
 });
 
+await step("Toplu uygula: seçilenler, onaylı tümü, yüksek risk dışarıda", async () => {
+  const { default: pg } = await import("pg");
+  const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await c.connect();
+  try {
+    const { rows } = await c.query(`select id, path, "metaDescription" m from "Page" where status='PUBLISHED' and type='SECTOR' order by path limit 3`);
+    const seed = async (pg_, title, risk) => (await c.query(
+      `insert into "AutopilotAction" (id,type,risk,status,category,source,"riskLevel",score,title,reason,"pageId",fingerprint,"proposedChanges") values ($1,'META','CONTROLLED','pending_approval','SERVICE','test',$2,50,$3,'test',$4,$1,$5) returning id`,
+      [`e2e-toplu-${Math.random().toString(36).slice(2)}`, risk, title, pg_.id, JSON.stringify({ pages: [{ pageId: pg_.id, path: pg_.path, changes: [{ field: "metaDescription", before: pg_.m, after: `${title}: sektöre özel sayfa yapısı, mobilde hızlı açılış ve kolay teklif formu ile hazırlanan web sitesi çözümleri.` }] }] })],
+    )).rows[0].id;
+    const a = await seed(rows[0], "Toplu A", "LOW"), b = await seed(rows[1], "Toplu B", "MEDIUM"), high = await seed(rows[2], "Toplu Yüksek", "HIGH");
+    const status = async (id) => (await c.query('select status,"appliedVia" v from "AutopilotAction" where id=$1', [id])).rows[0];
+    await page.goto("/yonetim/oneriler?kategori=SERVICE");
+    assert.equal(await page.locator(`input[name=ids][value="${high}"]`).count(), 0, "yüksek riskli öneri seçilememeli");
+    await page.locator(`input[name=ids][value="${a}"]`).check();
+    await Promise.all([page.waitForURL(/ok=/), page.locator('[data-bulk-bar] button:text-is("Seçilenleri Uygula")').click()]);
+    await page.waitForSelector("text=1 öneri uygulandı");
+    assert.deepEqual(await status(a), { status: "applied", v: "manual" });
+    assert.equal((await status(b)).status, "pending_approval");
+    await page.locator('[data-bulk-bar] summary').click();
+    await Promise.all([page.waitForURL(/ok=/), page.locator('[data-bulk-bar] button:text-is("Evet, tümünü uygula")').click()]);
+    await page.waitForSelector("text=1 yüksek riskli öneri dışarıda kaldı");
+    assert.equal((await status(b)).status, "applied");
+    assert.equal((await status(high)).status, "pending_approval");
+    await c.query(`update "Page" p set "metaDescription"=x.m from (select unnest($1::text[]) id, unnest($2::text[]) m) x where p.id=x.id`, [rows.map((r) => r.id), rows.map((r) => r.m)]);
+    await c.query(`delete from "AutopilotAction" where id = any($1)`, [[a, b, high]]);
+  } finally {
+    await c.end();
+  }
+});
+
 await step("Reddedilen öneri uygulanmaz", async () => {
   await page.goto("/yonetim/oneriler");
   const card = page.locator("article[data-status=pending_approval]").first();

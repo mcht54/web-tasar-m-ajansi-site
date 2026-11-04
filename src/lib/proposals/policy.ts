@@ -69,6 +69,11 @@ export function hasChanges(changes: ChangeSetLike | null | undefined): changes i
   return Boolean(changes?.pages?.some((p) => p.changes.length > 0));
 }
 
+/** Toplu uygulamaya girebilir mi? Yüksek/kritik riskli öneri yalnızca kendi kartından tek tek onaylanır. */
+export function bulkEligible(p: { status: string; riskLevel: string | null; proposedChanges: unknown }): boolean {
+  return p.status === "pending_approval" && (p.riskLevel === "LOW" || p.riskLevel === "MEDIUM") && hasChanges(p.proposedChanges as ChangeSetLike | null);
+}
+
 /** Otomatik uygulamaya uygun mu? Neden uygun değilse nedeni döner. */
 export function autoApplyBlocker(p: { type: string; riskLevel: string | null; proposedChanges: unknown }): string | null {
   const changes = p.proposedChanges as ChangeSetLike | null;

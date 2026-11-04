@@ -30,7 +30,7 @@ import { siteUrl } from "../env";
 import { extractMarkdown } from "../text/markdown";
 import { wordCount } from "../text/analyze";
 import { unsafeMarkup } from "../content/sanitize";
-import { AUTO_APPLY_TYPES, FORBIDDEN_FIELDS, STATUS_CHANGE_TYPES, autoApplyBlocker, expiryFor, fingerprintOf, hasChanges, riskLevelFor, type Category } from "./policy";
+import { AUTO_APPLY_TYPES, FORBIDDEN_FIELDS, STATUS_CHANGE_TYPES, autoApplyBlocker, bulkEligible, expiryFor, fingerprintOf, hasChanges, riskLevelFor, type Category } from "./policy";
 
 /** Test edilebilir saat: testler `clock.now`'u değiştirerek 48 saati simüle eder. */
 export const clock = { now: () => new Date() };
@@ -502,6 +502,40 @@ export async function rejectProposal(user: SessionUser, id: string) {
 
 /** Elle yeniden açılabilen durumlar. Uygulama yine tam hattan geçer (doğrulama, eskime, kalite kapısı, sürüm, geri alma). */
 export const REOPENABLE_STATUSES = ["needs_approval", "blocked", "rejected", "rolled_back", "failed", "skipped"] as const;
+
+export const BULK_MAX = 30;
+const BULK_BUDGET_MS = 90_000; // nginx 120 sn'de keser; kalan öneriler bekler, ikinci basışta işlenir
+
+export type BulkResult = { applied: number; failed: { title: string; note: string }[]; held: number; excluded: number; remaining: number };
+
+/**
+ * Toplu "Şimdi Uygula": her öneri sırayla aynı uygulama hattından geçer (elle onay sayılır), biri başarısız olsa
+ * diğerleri sürer. Yüksek/kritik riskli öneriler dışarıda kalır. Bu turda uygulanan bir öneriyle aynı sayfa alanını
+ * değiştiren öneri, eskime nedeniyle başarısız sayılmasın diye bekletilir (içeriği yeni hâle göre gözden geçirilmeli).
+ */
+export async function applyProposalsBulk(user: SessionUser, scope: { ids: string[] } | { category?: string }, opts: { fetchImpl?: typeof fetch | null; budgetMs?: number } = {}): Promise<BulkResult> {
+  const rows = await db.autopilotAction.findMany({
+    where: { status: "pending_approval", ...("ids" in scope ? { id: { in: scope.ids } } : scope.category ? { category: scope.category } : {}) },
+    orderBy: [{ expiresAt: "asc" }, { score: "desc" }],
+    select: { id: true, title: true, status: true, riskLevel: true, proposedChanges: true },
+  });
+  const eligible = rows.filter(bulkEligible);
+  const res: BulkResult = { applied: 0, failed: [], held: 0, excluded: rows.length - eligible.length, remaining: 0 };
+  const touched = new Set<string>();
+  const started = Date.now();
+  const budget = opts.budgetMs ?? BULK_BUDGET_MS;
+  let done = 0;
+  for (const a of eligible) {
+    if (done >= BULK_MAX || Date.now() - started >= budget) { res.remaining++; continue; }
+    const keys = (a.proposedChanges as ProposedChanges).pages.flatMap((p) => p.changes.filter((c) => c.field !== "relatedLinks").map((c) => `${p.pageId}:${c.field}`));
+    if (keys.some((k) => touched.has(k))) { res.held++; continue; }
+    done++;
+    const r = await applyProposal(a.id, { via: "manual", user, ...(opts.fetchImpl !== undefined ? { fetchImpl: opts.fetchImpl } : {}) });
+    if (r.ok) { res.applied++; keys.forEach((k) => touched.add(k)); }
+    else res.failed.push({ title: a.title, note: r.note });
+  }
+  return res;
+}
 
 /**
  * İnsan kararıyla öneriyi yeniden "onay bekliyor"a alır. Otomatik uygulamaya girmez (autoApply=false, süre yok):
