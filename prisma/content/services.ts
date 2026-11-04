@@ -676,4 +676,216 @@ Web yazılımınızın bir parçası da herkese açık bir web sitesi olacaksa [
       },
     ],
   },
+  {
+    slug: "seo-ajansi",
+    serviceName: "SEO Ajansı",
+    shortName: "SEO Ajansı",
+    summary: "SEO ajansı seçerken bakılacaklar, çalışma modeli ve ölçülebilir raporlama.",
+    sortOrder: 10,
+    allowLocationPages: false,
+    showInNav: false,
+    path: "/seo-ajansi",
+    name: "SEO Ajansı",
+    crumb: "SEO Ajansı",
+    seoTitle: "SEO Ajansı | Ölçülebilir SEO Çalışması",
+    metaDescription:
+      "SEO ajansı seçerken nelere bakmalı? Çalışma kapsamı, raporlama, sözleşme ve kırmızı bayraklar. Teknik SEO, içerik ve yerel SEO'yu tek ekipte yürütüyoruz.",
+    h1: "SEO Ajansı",
+    intro:
+      "Bir SEO ajansıyla çalışmak, sitenizin teknik altyapısını, içeriğini ve görünürlüğünü düzenli olarak iyileştiren bir ekibe bu işi devretmek demektir. Doğru ajansı seçmek için vaatlere değil, nasıl çalıştığına, neyi ölçtüğüne ve size ne raporladığına bakmak gerekir.",
+    primaryKeyword: "seo ajansı",
+    secondaryKeywords: ["seo ajansları", "seo firması", "seo danışmanlığı", "seo şirketi"],
+    body: `## SEO ajansı ne yapar?
+
+SEO ajansı; sitenizin Google'da ilgili aramalarda bulunabilmesi için teknik düzeltmeleri, içerik planını, site içi bağlantıları ve ölçümü üstlenir. Günlük işin çoğu görünmezdir: dizine alınmayan sayfaların nedenini bulmak, yinelenen sayfaları birleştirmek, başlık ve açıklamaları aranan ifadelere göre düzenlemek, hız sorunlarını çözmek. Hizmetin ayrıntıları için [SEO hizmeti](/seo-hizmeti) sayfamıza bakabilirsiniz.
+
+## SEO ajansı seçerken sorulacak sorular
+
+### Neyi ölçüyorsunuz?
+İyi bir ajans Search Console'daki tıklama, gösterim ve pozisyonun yanında sizin için asıl önemli olanı da ölçer: telefon, form, WhatsApp mesajı veya satış. Yalnızca "sıralama raporu" sunan bir çalışma, işinize ne kattığını göstermez.
+
+### Ne yapacağınızı yazılı olarak verebilir misiniz?
+Aylık iş listesi, öncelik sırası ve her işin gerekçesi açık olmalıdır. "Algoritma çalışması" gibi belirsiz ifadeler yerine somut maddeler isteyin.
+
+### Hesaplar ve veriler kimde kalıyor?
+Search Console, Analytics ve Google İşletme Profili sizin hesabınızda olmalı; ajans yalnızca yetkili kullanıcı olarak eklenmelidir. Çalışma bittiğinde verileriniz sizde kalır.
+
+### Bağlantıları nasıl kazanıyorsunuz?
+Paket bağlantı satışı, özel blog ağları veya toplu dizin kayıtları Google'ın spam politikalarına aykırıdır. Doğal bağlantı; gerçek iş ortaklıkları, sektör siteleri ve haber değeri olan içerikle kazanılır.
+
+## Kırmızı bayraklar
+
+- **Sıralama garantisi:** Google'da belirli bir sırayı kimse garanti edemez. Garanti veren teklifler şüpheyle karşılanmalıdır.
+- **Çok kısa sürede ilk sayfa vaadi:** Rekabetli kelimelerde kalıcı sonuç genellikle aylar alır.
+- **Gizli yöntemler:** "Nasıl yaptığımızı paylaşmıyoruz" diyen ajans, ileride sitenizi riske atabilir.
+- **Uzun ve çıkışsız sözleşme:** İlk aylarda sonucu göremeden uzun süreye bağlanmayın.
+
+## Bizim çalışma modelimiz
+
+1. **Ücretsiz ön analiz:** Sitenizin teknik durumu ve rakiplerin konumu incelenir.
+2. **Plan:** Her hizmetiniz için tek bir hedef sayfa ve kelime grubu belirlenir.
+3. **Uygulama:** Teknik düzeltmeler, içerik ve site içi bağlantılar aylık olarak yapılır.
+4. **Rapor:** Ne yapıldığı, neden yapıldığı ve sonucu sade bir dille paylaşılır.
+
+Sitenizin bugünkü durumunu görmek için [MarkaKarnem ücretsiz SEO analizi](https://markakarnem.com.tr/araclar/seo-analizi) ile başlayabilirsiniz. Yeni bir site planlıyorsanız SEO'yu baştan [web tasarım](/web-tasarim) sürecine dahil etmek en verimli yoldur.`,
+    faq: [
+      {
+        q: "SEO ajansı ile SEO danışmanı arasındaki fark nedir?",
+        a: "Danışman ne yapılması gerektiğini belirler ve ekibinize yol gösterir; uygulama sizde kalır. Ajans ise teknik düzenlemeyi, içeriği ve raporlamayı kendisi yürütür.",
+      },
+      {
+        q: "SEO ajansı fiyatları neye göre değişir?",
+        a: "Sitenin büyüklüğü, teknik durumu, hedef kelimelerin rekabeti ve içerik ihtiyacı fiyatı belirler. Önce sitenizi inceleyip kapsamı netleştirdikten sonra teklif veriyoruz.",
+      },
+      {
+        q: "Sonuçları ne zaman görürüm?",
+        a: "Teknik düzeltmelerin etkisi birkaç hafta içinde Search Console'da görünebilir. Rekabetli kelimelerde kalıcı yükselme çoğunlukla birkaç ay sürer.",
+      },
+      {
+        q: "Sözleşme bitince ne olur?",
+        a: "Hesaplar ve veriler sizin adınıza açıldığı için çalışma bittiğinde de sizde kalır. Yapılan işlerin listesini ve son durumu teslim ederiz.",
+      },
+    ],
+  },
+  {
+    slug: "sosyal-medya-yonetimi",
+    serviceName: "Sosyal Medya Yönetimi",
+    shortName: "Sosyal Medya",
+    summary: "İçerik planı, tasarım, paylaşım, reklam ve aylık raporla sosyal medya yönetimi.",
+    sortOrder: 11,
+    allowLocationPages: false,
+    showInNav: false,
+    path: "/sosyal-medya-yonetimi",
+    name: "Sosyal Medya Yönetimi",
+    crumb: "Sosyal Medya",
+    seoTitle: "Sosyal Medya Yönetimi | İçerik, Reklam ve Rapor",
+    metaDescription:
+      "Sosyal medya yönetimi: içerik planı, gönderi ve Reels tasarımı, Instagram ve Facebook reklamları, mesaj yönlendirme ve aylık performans raporu.",
+    h1: "Sosyal Medya Yönetimi",
+    intro:
+      "Sosyal medya yönetimi; markanızın Instagram, Facebook ve diğer hesaplarında ne paylaşacağını planlamak, içerikleri hazırlamak, reklamları yönetmek ve sonucu ölçmektir. Amaç takipçi sayısını şişirmek değil, sizi tanımayan kişilerin size yazmasını ve sizden alışveriş yapmasını sağlamaktır.",
+    primaryKeyword: "sosyal medya yönetimi",
+    secondaryKeywords: ["sosyal medya ajansı", "instagram yönetimi", "instagram reklam", "sosyal medya yönetimi fiyatları"],
+    body: `## Sosyal medya yönetimi neleri kapsar?
+
+### İçerik planı
+Her ayın başında hangi gün ne paylaşılacağı, hangi ürün veya hizmetin öne çıkarılacağı ve hangi özel günlerin değerlendirileceği planlanır. Plan onayınıza sunulduktan sonra üretime geçilir.
+
+### Tasarım ve video
+Gönderi, carousel, hikâye ve Reels içerikleri marka renklerinize ve yazı tiplerinize uygun hazırlanır. Kısa videolarda ilk saniyelerde dikkat çeken ve mesajı net veren kurgular tercih edilir.
+
+### Reklam yönetimi
+Instagram ve Facebook reklamlarında hedef kitle, bütçe ve reklam amacı (mesaj, arama, web sitesi trafiği, satış) işinize göre seçilir. Reklam bütçesi sizin hesabınızdan harcanır; harcama ve sonuç her ay raporlanır.
+
+### Mesaj ve yorum yönlendirme
+Gelen soruların hızlı yanıtlanması satışın büyük kısmını belirler. Sık sorulan sorular için hazır yanıtlar ve WhatsApp yönlendirmesi kurulur.
+
+### Raporlama
+Erişim, etkileşim, profil ziyareti, mesaj ve reklam sonuçları aylık olarak paylaşılır. Hangi içeriğin işe yaradığına bakarak sonraki ayın planı güncellenir.
+
+## Takipçi değil müşteri
+
+Satın alınan takipçi ve beğeni hesabın erişimini düşürür, reklam hedeflemesini bozar ve güven kaybettirir. Biz bu yöntemleri kullanmıyoruz. Gerçek sonuç; gelen mesaj, arama ve satış sayısıyla ölçülür.
+
+## Hangi işletmeler için uygun?
+
+- Ürünlerini görsel olarak anlatabilen mağaza ve e-ticaret siteleri
+- Randevuyla çalışan klinik, güzellik merkezi ve hizmet işletmeleri
+- Restoran, kafe ve yerel işletmeler
+- Kurumsal görünürlük isteyen üretim ve sanayi firmaları
+
+Sosyal medyadan gelen ziyaretçinin güven duyacağı bir siteniz yoksa önce [web tasarım](/web-tasarim) ile başlamanızı, aramada da görünmek için [Google Ads yönetimi](/google-ads-yonetimi) ile birlikte planlamanızı öneriyoruz. Instagram hesabınızın etkileşim oranını [ücretsiz hesaplama aracı](https://markakarnem.com.tr/araclar/instagram-etkilesim-orani-hesaplama) ile görebilirsiniz.`,
+    faq: [
+      {
+        q: "Sosyal medya yönetimi fiyatları neye göre belirlenir?",
+        a: "Aylık içerik sayısı, video ihtiyacı, yönetilen hesap sayısı ve reklam yönetimi kapsamı fiyatı belirler. Reklam bütçesi hizmet bedelinden ayrıdır ve sizin hesabınızdan harcanır.",
+      },
+      {
+        q: "Paylaşımları onaylamadan yayınlıyor musunuz?",
+        a: "Hayır. Aylık plan ve içerikler önce onayınıza sunulur, onaylanan içerikler planlanan tarihte yayınlanır.",
+      },
+      {
+        q: "Takipçi sayısını artırıyor musunuz?",
+        a: "Gerçek ve hedef kitlenize uygun takipçi artışı içerik ve reklamla gelir. Takipçi veya beğeni satın almıyoruz; bu yöntemler hesaba zarar verir.",
+      },
+      {
+        q: "Hesaplarımın şifresini vermem gerekir mi?",
+        a: "Hayır. Meta İşletme Yöneticisi üzerinden yetki vermeniz yeterlidir; hesaplarınızın sahipliği sizde kalır.",
+      },
+    ],
+  },
+  {
+    slug: "kurumsal-kimlik-tasarimi",
+    serviceName: "Kurumsal Kimlik Tasarımı",
+    shortName: "Kurumsal Kimlik",
+    summary: "Logo, renk, yazı tipi ve basılı-dijital uygulamalarla tutarlı kurumsal kimlik.",
+    sortOrder: 12,
+    allowLocationPages: false,
+    showInNav: false,
+    path: "/kurumsal-kimlik-tasarimi",
+    name: "Kurumsal Kimlik Tasarımı",
+    crumb: "Kurumsal Kimlik",
+    seoTitle: "Kurumsal Kimlik Tasarımı | Logo, Kılavuz ve Uygulamalar",
+    metaDescription:
+      "Kurumsal kimlik tasarımı: logo, renk paleti, yazı tipleri, kartvizit, antetli kağıt, sosyal medya şablonları ve kurumsal kimlik kılavuzu.",
+    h1: "Kurumsal Kimlik Tasarımı",
+    intro:
+      "Kurumsal kimlik, markanızın her yerde aynı görünmesini sağlayan görsel kurallar bütünüdür. Logo yalnızca başlangıçtır; renkler, yazı tipleri, kartvizit, web sitesi, sosyal medya ve tabela aynı dili konuştuğunda markanız akılda kalır ve güven verir.",
+    primaryKeyword: "kurumsal kimlik",
+    secondaryKeywords: ["kurumsal kimlik tasarımı", "kurumsal kimlik kılavuzu", "logo tasarım", "marka kimliği"],
+    body: `## Kurumsal kimlik çalışması neleri içerir?
+
+### Logo
+Firmanızın adını ve karakterini taşıyan işaret. Küçük boyutta, tek renkte ve koyu zeminde de okunabilir olmalıdır. Yazı, harf, sembol veya amblem biçiminde tasarlanabilir.
+
+### Renk paleti
+Ana ve yardımcı renkler; baskı (CMYK, Pantone) ve ekran (RGB, HEX) karşılıklarıyla belirlenir. Böylece kartvizitteki kırmızı ile web sitesindeki kırmızı aynı görünür.
+
+### Yazı tipleri
+Başlık ve metin için kullanılacak yazı tipleri, lisans durumu ve yedek seçenekleriyle tanımlanır.
+
+### Basılı uygulamalar
+Kartvizit, antetli kağıt, zarf, dosya, fatura, kaşe, broşür ve katalog şablonları.
+
+### Dijital uygulamalar
+Web sitesi arayüzü, sosyal medya profil ve gönderi şablonları, e-posta imzası ve sunum şablonu.
+
+### Kurumsal kimlik kılavuzu
+Tüm kuralların tek dosyada toplandığı rehberdir: logonun hangi boyutlarda ve hangi zeminlerde nasıl kullanılacağı, yapılmaması gerekenler, renk ve yazı tipi tanımları. Matbaa, tabelacı veya yeni bir tasarımcıyla çalışırken bu kılavuz tutarlılığı korur.
+
+## Süreç
+
+1. **Tanışma ve brifing:** Sektörünüz, hedef kitleniz, rakipleriniz ve markanızın vermek istediği izlenim konuşulur.
+2. **Logo taslakları:** Farklı yönleri gösteren taslaklar sunulur, seçilen yön geliştirilir.
+3. **Kimlik sistemi:** Renk, yazı tipi ve görsel dil belirlenir.
+4. **Uygulamalar:** İhtiyacınız olan basılı ve dijital parçalar hazırlanır.
+5. **Teslim:** Kaynak dosyalar ve kurumsal kimlik kılavuzu teslim edilir.
+
+## Ne zaman kurumsal kimlik yenilenmeli?
+
+- Logonuz küçük boyutlarda veya sosyal medya profilinde okunmuyorsa
+- Farklı yerlerde farklı renk ve logolar kullanılıyorsa
+- Firmanız büyüdü, hizmetleriniz değişti ama görünümünüz aynı kaldıysa
+- Yeni bir web sitesi veya tabela yaptırmadan önce
+
+Kimliğinizi dijitalde ilk uygulayacağımız yer genellikle web sitenizdir: [kurumsal web tasarım](/kurumsal-web-tasarim). Baskı uygulamaları için [Mchttasarım matbaa hizmetlerine](https://www.mchttasarim.com.tr/matbaa/) bakabilirsiniz.`,
+    faq: [
+      {
+        q: "Kurumsal kimlik ile logo aynı şey mi?",
+        a: "Hayır. Logo kurumsal kimliğin bir parçasıdır. Kurumsal kimlik; logoya ek olarak renk, yazı tipi, basılı ve dijital uygulamalar ile bunların kullanım kurallarını kapsar.",
+      },
+      {
+        q: "Kurumsal kimlik fiyatları neye göre değişir?",
+        a: "Logo tasarımının dahil olup olmadığı, istenen uygulama sayısı ve kılavuzun kapsamı fiyatı belirler. İhtiyacınızı ilettiğinizde kapsamı birlikte netleştirip teklif veriyoruz.",
+      },
+      {
+        q: "Kaynak dosyaları teslim ediyor musunuz?",
+        a: "Evet. Logo ve uygulamaların vektör kaynak dosyaları, dijital kullanım dosyaları ve kurumsal kimlik kılavuzu teslim edilir.",
+      },
+      {
+        q: "Mevcut logomu koruyarak kimlik oluşturabilir misiniz?",
+        a: "Evet. Tanınırlığı korumak için mevcut logonuzu temel alıp sadeleştirerek tutarlı bir kimlik sistemi kurabiliriz.",
+      },
+    ],
+  },
 ];
