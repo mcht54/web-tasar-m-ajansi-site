@@ -888,4 +888,209 @@ Kimliğinizi dijitalde ilk uygulayacağımız yer genellikle web sitenizdir: [ku
       },
     ],
   },
+  {
+    slug: "e-ticaret-sitesi-kurma",
+    serviceName: "E-Ticaret Sitesi Kurma",
+    shortName: "E-Ticaret Kurulum",
+    summary: "Alan adından sanal posa, kargodan ilk siparişe kadar adım adım e-ticaret sitesi kurulumu.",
+    sortOrder: 13,
+    allowLocationPages: false,
+    showInNav: false,
+    path: "/e-ticaret-sitesi-kurma",
+    name: "E-Ticaret Sitesi Kurma",
+    crumb: "E-Ticaret Kurulum",
+    seoTitle: "E-Ticaret Sitesi Kurma: Adımlar, Paketler ve Maliyet (2026)",
+    metaDescription:
+      "E-ticaret sitesi kurmak için gereken her adım: alan adı, altyapı, sanal pos, kargo, yasal sayfalar ve SEO. Paket seçimi ve maliyeti belirleyen kalemler.",
+    h1: "E-Ticaret Sitesi Kurma",
+    intro:
+      "E-ticaret sitesi kurmak; bir tema seçip ürün yüklemekten ibaret değildir. Ödeme alabilmek için sanal pos, gönderim için kargo entegrasyonu, satış yapabilmek için yasal sayfalar ve müşteri bulabilmek için arama motoru görünürlüğü gerekir. Bu rehberde e-ticaret sitesi kurulumunu ilk günden ilk siparişe kadar sırasıyla anlatıyor, paket ve maliyet kararını kolaylaştıracak soruları listeliyoruz.",
+    primaryKeyword: "e-ticaret sitesi kurma",
+    secondaryKeywords: ["e-ticaret sitesi kurmak", "e-ticaret sitesi kurulumu", "e-ticaret paketleri", "e-ticaret sitesi fiyatları", "sanal pos"],
+    body: `## E-ticaret sitesi kurmadan önce netleştirilmesi gerekenler
+
+Kuruluma başlamadan önce üç soruya cevap vermek, sonradan yapılacak pahalı değişiklikleri önler:
+
+- **Ne satacaksınız ve kaç ürününüz var?** 20 ürünlü bir butik ile 5.000 varyantlı bir yedek parça mağazası aynı altyapıyla kurulmaz.
+- **Kime satacaksınız?** Yalnız son tüketiciye mi (B2C), bayilere de mi (B2B)? Bayi fiyatı, toplu sipariş ve cari hesap ihtiyacı altyapı seçimini değiştirir.
+- **Siparişleri kim hazırlayacak?** Stok takibi, kargo etiketi ve iade süreçlerini kimin yöneteceği; panelin ne kadar sade olması gerektiğini belirler.
+
+## Adım adım e-ticaret sitesi kurulumu
+
+### 1. Şirket ve vergi altyapısı
+Türkiye'de e-ticaret sitesiyle düzenli satış yapmak için şahıs ya da limited şirket ve vergi levhası gerekir. Sanal pos başvurularında vergi levhası, imza sirküleri ve IBAN istenir. E-fatura / e-arşiv fatura geçişini de bu aşamada planlamak gerekir.
+
+### 2. Alan adı ve hosting
+Kısa, akılda kalan ve markanızla aynı bir alan adı seçin. Hazır platformlarda barındırma pakete dahildir; açık kaynak çözümlerde (örneğin WooCommerce) e-ticarete uygun, yedekli ve SSL sertifikalı bir sunucu gerekir.
+
+### 3. Altyapı seçimi
+Hazır kiralık platformlar, açık kaynak sistemler ve özel yazılım arasındaki farkları [e-ticaret web tasarım](/e-ticaret-web-tasarim) sayfamızda tablo halinde karşılaştırdık. Kısaca: hızlı başlamak için kiralık platform, esneklik ve sahiplik için açık kaynak, özel iş akışları için özel yazılım uygundur.
+
+### 4. Ödeme: sanal pos ve ödeme kuruluşları
+Bankaların sanal posu veya iyzico, PayTR gibi ödeme kuruluşları ile kredi kartı tahsilatı yapılır. Komisyon oranı, para çekme süresi (valör), taksit seçenekleri ve 3D Secure zorunluluğu karşılaştırılarak seçim yapılmalıdır. Havale/EFT ve kapıda ödeme seçenekleri de dönüşümü artırabilir.
+
+### 5. Kargo entegrasyonu
+Anlaşmalı kargo firmasıyla entegrasyon sayesinde sipariş geldiğinde gönderi kaydı ve barkod otomatik oluşur, takip numarası müşteriye e-posta veya SMS ile gider. Ücretsiz kargo eşiği ve desi hesaplaması kurulumda ayarlanır.
+
+### 6. Yasal sayfalar
+Mesafeli satış sözleşmesi, ön bilgilendirme formu, iade ve cayma hakkı koşulları, KVKK aydınlatma metni ve çerez politikası satış başlamadan yayında olmalıdır. Ödeme kuruluşları bu sayfaları başvuru sırasında kontrol eder.
+
+### 7. Ürün sayfaları
+Satışın gerçekleştiği yer ürün sayfasıdır. Her ürün için:
+- Özgün bir ürün açıklaması (üretici metnini kopyalamak hem Google'da hem müşteri gözünde değer kaybettirir)
+- Birden fazla açıdan, hızlı açılan fotoğraflar
+- Net fiyat, stok, kargo süresi ve iade bilgisi
+- Varyantlar (renk, beden, ölçü) ve stok takibi
+
+### 8. SEO ve ölçüm
+Kategori ve ürün sayfalarının başlık ve açıklamaları, temiz URL yapısı, site haritası ve hız ayarları açılıştan önce yapılmalıdır. Google Search Console, Google Analytics ve reklam dönüşüm etiketleri kurulmadan reklam bütçesi harcamayın. Ayrıntılar için [SEO hizmeti](/seo-hizmeti) sayfamıza bakabilirsiniz.
+
+### 9. Test siparişi ve yayın
+Gerçek kartla küçük tutarlı bir test siparişi verip iade edin; sipariş e-postaları, fatura, kargo kaydı ve stok düşümünün çalıştığını görün. Ardından siteyi yayına alın.
+
+## E-ticaret paketleri: hangisi size uygun?
+
+E-ticaret paketleri genellikle ürün sayısı, tasarım özelleştirmesi ve entegrasyon sayısına göre ayrılır. Paket karşılaştırırken şu soruları sorun:
+
+- Ürün, kategori veya trafik sınırı var mı?
+- Sanal pos ve kargo entegrasyonu pakete dahil mi, yoksa ek ücretli mi?
+- Pazaryeri (Trendyol, Hepsiburada vb.) ve muhasebe/e-fatura entegrasyonu var mı?
+- Site ve alan adı kimin adına kayıtlı; hizmeti bırakırsanız verilerinizi alabilir misiniz?
+- Yıllık yenileme ücreti ilk yılla aynı mı?
+
+## E-ticaret sitesi fiyatlarını belirleyen kalemler
+
+E-ticaret sitesi maliyeti tek bir rakam değildir; şu kalemlerin toplamıdır:
+
+| Kalem | Tek seferlik / Düzenli |
+| --- | --- |
+| Tasarım ve kurulum | Tek seferlik |
+| Altyapı lisansı veya platform kirası | Aylık / yıllık |
+| Alan adı, hosting, SSL | Yıllık |
+| Sanal pos komisyonu | Satış başına |
+| Entegrasyonlar (kargo, e-fatura, pazaryeri) | Tek seferlik + bazen aylık |
+| Ürün yükleme, fotoğraf ve içerik | Tek seferlik / ürün başına |
+| Reklam ve SEO | Aylık |
+
+Bu yüzden "en ucuz e-ticaret sitesi" yerine, ilk yılın toplam maliyetini ve satış başına kalan payı hesaplamak daha doğru karar verdirir. Genel fiyat aralıkları için [web tasarım fiyatları](/web-tasarim-fiyatlari) sayfamıza göz atabilirsiniz.
+
+## Kurulumdan sonra: ilk siparişleri getirmek
+
+Site açıldığında trafik kendiliğinden gelmez. İlk aylarda en hızlı sonuç genellikle [Google Ads](/google-ads-yonetimi) alışveriş kampanyaları ve [Instagram reklamları](/instagram-reklam-yonetimi) ile alınır; kalıcı ve ücretsiz trafik ise kategori sayfalarında yapılan SEO çalışmasıyla birkaç ay içinde oluşur.`,
+    faq: [
+      {
+        q: "E-ticaret sitesi kurmak için şirket gerekir mi?",
+        a: "Düzenli ve sürekli satış yapacaksanız evet. Sanal pos ve ödeme kuruluşları başvuruda vergi levhası ister; fatura kesebilmek için de şahıs ya da limited şirket gerekir.",
+      },
+      {
+        q: "E-ticaret sitesi kurulumu ne kadar sürer?",
+        a: "Ürün sayısına ve entegrasyonlara göre değişir. Hazır altyapıyla kurulan, ürünleri ve yasal metinleri hazır bir mağaza birkaç haftada yayına alınabilir; sanal pos onayı süreci ayrıca birkaç iş günü sürebilir.",
+      },
+      {
+        q: "Hazır e-ticaret paketi mi, özel kurulum mu almalıyım?",
+        a: "Az ürünle hızlı başlamak istiyorsanız hazır paket yeterli olabilir. Bayi fiyatı, özel kargo kuralları, pazaryeri veya ERP entegrasyonu gibi ihtiyaçlarınız varsa açık kaynak ya da özel yazılım uzun vadede daha esnektir.",
+      },
+      {
+        q: "Ücretsiz e-ticaret sitesi kurulabilir mi?",
+        a: "Bazı platformlar deneme süresi veya ücretsiz başlangıç sunar; ancak alan adı, sanal pos komisyonu, tema ve entegrasyonlar gibi kalemler çoğunlukla ücretlidir. Toplam maliyeti ilk yıl üzerinden hesaplamak gerekir.",
+      },
+      {
+        q: "Siteyi kurduktan sonra yönetimini kendim yapabilir miyim?",
+        a: "Evet. Ürün ekleme, sipariş takibi ve kampanya tanımlama gibi günlük işler yönetim panelinden yapılır; teslimde panel kullanımını gösteriyoruz.",
+      },
+    ],
+  },
+  {
+    slug: "instagram-reklam-yonetimi",
+    serviceName: "Instagram Reklam Yönetimi",
+    shortName: "Instagram Reklam",
+    summary: "Doğru kitle, doğru içerik ve ölçülen sonuçlarla Instagram ve Facebook (Meta) reklam yönetimi.",
+    sortOrder: 14,
+    allowLocationPages: false,
+    showInNav: false,
+    path: "/instagram-reklam-yonetimi",
+    name: "Instagram Reklam Yönetimi",
+    crumb: "Instagram Reklam",
+    seoTitle: "Instagram Reklam Verme ve Reklam Yönetimi | Meta Reklam Ajansı",
+    metaDescription:
+      "Instagram'da reklam nasıl verilir, bütçe neye göre belirlenir, reklam neden reddedilir? Meta reklamlarını kitle, içerik ve dönüşüm takibiyle yönetiyoruz.",
+    h1: "Instagram Reklam Yönetimi",
+    intro:
+      "Instagram reklamları, ürününüzü veya hizmetinizi ilgilenebilecek kişilere konum, yaş, ilgi alanı ve davranışa göre gösterir. Gönderiyi öne çıkarmak birkaç dokunuşla yapılır; ama satış, mesaj veya form getiren bir reklam için doğru hedef, doğru içerik ve ölçüm gerekir. Bu sayfada Instagram'da reklam vermenin yollarını, bütçeyi belirleyen etkenleri ve reklamların neden reddedildiğini anlatıyoruz.",
+    primaryKeyword: "instagram reklam verme",
+    secondaryKeywords: ["instagram reklam ver", "instagram reklam yönetimi", "meta reklam ajansı", "facebook reklamları", "instagram reklam ücreti"],
+    body: `## Instagram'da reklam vermenin iki yolu
+
+### 1. Gönderiyi öne çıkarma (uygulama içinden)
+Profesyonel hesaba geçtiyseniz bir gönderinin altındaki "Öne Çıkar" düğmesiyle hedef (profil ziyareti, web sitesi, mesaj), kitle, bütçe ve süre seçerek reklam verebilirsiniz. Hızlıdır; ancak kitle ve ölçüm seçenekleri sınırlıdır ve yalnız mevcut gönderiler kullanılabilir.
+
+### 2. Meta Reklam Yöneticisi (Ads Manager)
+Instagram ve Facebook reklamları aynı yerden, Meta Reklam Yöneticisi'nden yönetilir. Burada:
+- Kampanya hedefini (bilinirlik, trafik, etkileşim, potansiyel müşteri, satış) seçersiniz,
+- Kitleleri ayrıntılı tanımlar, web sitesi ziyaretçilerinize yeniden ulaşırsınız,
+- Aynı anda birden çok görsel ve metni test edersiniz,
+- Meta pikseli ve Dönüşüm API'si ile satış ve formları ölçersiniz.
+
+Sonuç odaklı reklamlar için doğru yol Reklam Yöneticisi'dir.
+
+## Adım adım Instagram reklamı kurulumu
+
+1. **İşletme hesabı ve Business Manager:** Instagram profesyonel hesabı ile Facebook sayfasını Meta İşletme Portföyü'ne bağlayın; reklam hesabı ve ödeme yöntemini tanımlayın.
+2. **Ölçüm:** Web siteniz varsa Meta pikselini ve dönüşüm olaylarını kurun; WhatsApp veya mesaj hedefliyorsanız mesaj sayısını takip edin.
+3. **Hedef:** Ne istediğinize göre kampanya hedefi seçin. "Beğeni" ile "satış" aynı kitleye gösterilmez.
+4. **Kitle:** Konum, yaş ve ilgi alanlarıyla başlayın; zamanla benzer kitleler ve yeniden pazarlama kitleleri ekleyin.
+5. **İçerik:** Dikey (9:16) video ve Reels formatı genellikle en düşük maliyeti verir. İlk üç saniye ve net bir çağrı (mesaj gönder, satın al) belirleyicidir.
+6. **Bütçe ve test:** Küçük bir günlük bütçeyle birkaç farklı görsel ve metni test edin, iyi çalışanı büyütün.
+7. **Raporlama:** Haftalık olarak mesaj/sonuç başına maliyeti, tıklama oranını ve satışları kontrol edin.
+
+## Instagram reklam ücreti neye göre değişir?
+
+Instagram'da sabit bir reklam fiyatı yoktur; reklamlar açık artırmayla gösterilir. Ödediğiniz tutarı şunlar belirler:
+
+- **Hedef kitlenin büyüklüğü ve rekabet:** Aynı kitleye reklam veren işletme sayısı arttıkça maliyet yükselir.
+- **Kampanya hedefi:** Gösterim almak, satış almaktan ucuzdur.
+- **İçeriğin kalitesi:** Etkileşim alan reklamları Meta daha ucuza gösterir.
+- **Dönem:** Bayram, Kasım indirimleri ve yılbaşı gibi dönemlerde maliyetler artar.
+
+Günlük bütçeyi siz belirlersiniz ve istediğiniz an durdurabilirsiniz. Reklam bütçesi Meta'ya doğrudan sizin kartınızdan ödenir; ajans ücreti yönetim hizmeti içindir.
+
+## "Instagram reklam veremiyorum": sık görülen sorunlar
+
+- **Reklam reddedildi:** Önce/sonra görselleri, sağlık iddiaları, kişisel özelliklere hitap eden metinler ("Kilolu musunuz?") ve yanıltıcı vaatler reddedilir. Metni ve görseli politikaya uygun hale getirip yeniden incelemeye gönderin.
+- **Reklam hesabı kısıtlandı:** Ödeme hatası, şüpheli giriş veya tekrarlanan politika ihlallerinde hesap kısıtlanabilir. Hesap Kalitesi ekranından itiraz edilir; kimlik doğrulaması istenebilir.
+- **Öne Çıkar düğmesi pasif:** Hesap kişisel hesapsa, gönderide telifli müzik varsa veya Facebook sayfası bağlantısı eksikse düğme çalışmayabilir.
+- **Ödeme alınamıyor:** Kartın internet alışverişine ve yurt dışı işlemlere açık olduğundan emin olun.
+
+## Instagram reklam yönetiminde ne yapıyoruz?
+
+- Reklam hesabı, piksel ve dönüşüm ölçümünün kurulumu ve denetimi
+- Hedefe uygun kampanya yapısı ve kitle planı
+- Reklam metinleri ve görsel/video yönlendirmesi; gerektiğinde [sosyal medya yönetimi](/sosyal-medya-yonetimi) ekibimizle içerik üretimi
+- Haftalık optimizasyon, A/B testleri ve sade bir aylık rapor
+- Reklamın gönderildiği sayfanın satışa uygun olması için [web tasarım](/web-tasarim) ve açılış sayfası önerileri
+
+Arama yapan müşteriye ulaşmak için Instagram reklamlarını [Google Ads yönetimi](/google-ads-yonetimi) ile birlikte kullanmak, iki kanalın birbirini beslemesini sağlar.`,
+    faq: [
+      {
+        q: "Instagram'da reklam vermek için en az ne kadar bütçe gerekir?",
+        a: "Meta düşük günlük bütçelerle reklam vermeye izin verir; ancak anlamlı bir test için birkaç farklı reklamı en az bir hafta yayında tutacak bütçe gerekir. Bütçeyi hedefinize ve sektörünüzdeki rekabete göre birlikte belirliyoruz.",
+      },
+      {
+        q: "Instagram ve Facebook reklamları ayrı mı verilir?",
+        a: "Hayır. İkisi de Meta Reklam Yöneticisi'nden yönetilir; aynı kampanya Instagram, Facebook, Messenger ve Audience Network'te gösterilebilir. Yerleşimleri tek tek seçebilirsiniz.",
+      },
+      {
+        q: "Reklam bütçesi ajansa mı ödenir?",
+        a: "Reklam harcaması Meta'ya doğrudan sizin ödeme yönteminizden ödenir ve faturası size kesilir. Ajans ücreti yalnız kurulum ve yönetim hizmetini kapsar.",
+      },
+      {
+        q: "Reklamlar ne zaman sonuç vermeye başlar?",
+        a: "Reklamlar onaylandıktan sonra birkaç saat içinde gösterilmeye başlar. Meta'nın öğrenme aşaması için ilk 1–2 hafta test ve optimizasyon dönemi olarak düşünülmelidir.",
+      },
+      {
+        q: "Kapanan veya kısıtlanan reklam hesabı açılabilir mi?",
+        a: "Çoğu durumda Hesap Kalitesi ekranından itiraz edilerek açılabilir. Kısıtlamanın sebebini inceleyip doğru belgelerle itiraz sürecinde yardımcı oluyoruz; sonucu Meta belirler.",
+      },
+    ],
+  },
 ];
