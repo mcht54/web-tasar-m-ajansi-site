@@ -148,11 +148,11 @@ describe("tarama: robots, sınır, önbellek, fark", () => {
     site.state.version = 2;
     const r = await crawlCompetitor(competitorId, { policy, baseOverride: site.origin, settings: { ...fast, cacheHours: 1 }, now: new Date(Date.now() + 10 * 24 * H) });
     const kinds = r.changes.map((c) => `${c.kind}:${c.url}`);
-    expect(kinds).toContain("NEW_PAGE:/sosyal-medya-yonetimi");
+    expect(kinds).toContain("NEW_PAGE:/dijital-pazarlama");
     expect(kinds).toContain("REMOVED_PAGE:/grafik-tasarim");
     expect(kinds).toContain("URL_CHANGE:/rehber/web-sitesi-fiyatlari");
     expect(kinds).toContain("TITLE:/seo");
-    expect(kinds).toContain("NEW_SERVICE:/sosyal-medya-yonetimi");
+    expect(kinds).toContain("NEW_SERVICE:/dijital-pazarlama");
     expect(await db.competitorChange.count({ where: { competitorId } })).toBe(r.changes.length);
     expect((await db.competitorPage.findFirst({ where: { competitorId, path: "/grafik-tasarim" } }))?.removedAt).toBeTruthy();
   });
@@ -176,7 +176,7 @@ describe("fırsatlar: gap türleri, dürüst veri", () => {
     expect(exp, JSON.stringify(findings.map((f) => f.key))).toBeTruthy();
     expect(exp!.actionable).toBe(true);
     expect(exp!.proposal!.kind).toBe("CONTENT"); // yeni URL değil, mevcut sayfa
-    const social = by("SERVICE_GAP").find((f) => f.key === "SERVICE_GAP:/sosyal-medya-yonetimi");
+    const social = by("SERVICE_GAP").find((f) => f.key === "SERVICE_GAP:/dijital-pazarlama");
     expect(social?.actionable).toBe(false);
     expect(social?.blockedReason).toMatch(/doğrulanmadı/);
     expect(by("TECHNICAL_GAP").some((f) => f.key === "TECHNICAL_GAP:schema:LocalBusiness" && !f.actionable)).toBe(true);
@@ -282,7 +282,7 @@ describe("rakip fırsatı → öneri → 48 saat yaşam döngüsü", () => {
     expect(all.some((a) => a.category === "LOCAL" || (a.proposal as { findingType?: string }).findingType === "LOCAL_GAP")).toBe(false);
     for (const a of all) expect(a.riskLevel).not.toBe("HIGH");
     expect(all.some((a) => a.type === "NEW_PAGE")).toBe(false);
-    expect(await db.page.findUnique({ where: { path: "/sosyal-medya-yonetimi" } })).toBeNull();
+    expect(await db.page.findUnique({ where: { path: "/dijital-pazarlama" } })).toBeNull();
     await db.autopilotAction.deleteMany({ where: { source: "competitor" } });
   });
 

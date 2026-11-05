@@ -43,7 +43,7 @@ function pagesFor(v: 1 | 2): Record<string, PageDef> {
   p["/sakarya/web-tasarim"] = { title: "Sakarya Web Tasarım", h1: "Sakarya Web Tasarım", h2: [], body: words("sakarya web", 30), schema: [], links: [] };
   if (v === 1) p["/grafik-tasarim"] = { title: "Grafik Tasarım | Rakip", h1: "Grafik Tasarım", h2: ["Logo"], body: words("grafik", 60), schema: ["Service"], links: nav };
   if (v === 2) {
-    p["/sosyal-medya-yonetimi"] = { title: "Sosyal Medya Yönetimi | Rakip", h1: "Sosyal Medya Yönetimi", h2: ["İçerik planı"], body: words("sosyal medya", 80), schema: ["Service"], links: nav };
+    p["/dijital-pazarlama"] = { title: "Dijital Pazarlama | Rakip", h1: "Dijital Pazarlama", h2: ["Kampanya planı"], body: words("dijital pazarlama", 80), schema: ["Service"], links: nav };
     p["/rehber/web-sitesi-fiyatlari"] = p["/blog/eski-rehber"]; // aynı içerik yeni adreste (URL değişikliği)
     delete p["/blog/eski-rehber"];
   }
