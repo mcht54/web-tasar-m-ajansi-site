@@ -123,17 +123,17 @@ function Hero({ page, serviceNames, avgSeo, scored }: { page: Props["page"]; ser
 
       <div className="relative mx-auto grid max-w-7xl gap-14 px-4 sm:px-6 lg:grid-cols-[1.05fr_1fr] lg:items-center lg:gap-10">
         <div>
-          <p className="rise chip border border-white/12 bg-white/5 text-snow/80">
+          <p className="rise-lcp chip border border-white/12 bg-white/5 text-snow/80">
             <span className="blink h-1.5 w-1.5 rounded-full bg-signal" /> Web tasarım · SEO · Dönüşüm
           </p>
-          <h1 className="rise mt-7 font-display text-[clamp(2.9rem,1.5rem+5.6vw,6.4rem)] leading-[0.94] tracking-[-0.03em]" style={{ "--d": "90ms" } as React.CSSProperties}>
+          <h1 className="rise-lcp mt-7 font-display text-[clamp(2.9rem,1.5rem+5.6vw,6.4rem)] leading-[0.94] tracking-[-0.03em]" style={{ "--d": "90ms" } as React.CSSProperties}>
             {page.h1}
           </h1>
-          <p className="rise mt-7 font-display text-[clamp(1.4rem,1.1rem+1vw,2rem)] italic leading-tight" style={{ "--d": "180ms" } as React.CSSProperties}>
+          <p className="rise-lcp mt-7 font-display text-[clamp(1.4rem,1.1rem+1vw,2rem)] italic leading-tight" style={{ "--d": "180ms" } as React.CSSProperties}>
             <span className="text-gradient">Güzel görünmesi yetmez — iş getirmeli.</span>
           </p>
           {page.intro && (
-            <p className="rise mt-5 max-w-xl text-lg leading-relaxed text-snow/70" style={{ "--d": "260ms" } as React.CSSProperties}>{page.intro}</p>
+            <p className="rise-lcp mt-5 max-w-xl text-lg leading-relaxed text-snow/70" style={{ "--d": "260ms" } as React.CSSProperties}>{page.intro}</p>
           )}
           <div className="rise mt-10 flex flex-wrap items-center gap-3" style={{ "--d": "340ms" } as React.CSSProperties}>
             <Link href="/teklif-al" className="cta-magnet inline-flex items-center gap-2 rounded-full bg-[#d63a10] px-7 py-4 font-semibold text-white">
