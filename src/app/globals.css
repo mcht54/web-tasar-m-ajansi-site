@@ -124,6 +124,9 @@ html.motion [data-reveal="clip"]:not(.is-in) { clip-path: inset(0 0 100% 0); opa
 @keyframes mcht-screens { 0%, 30% { transform: translate3d(0, 0, 0); } 36%, 63% { transform: translate3d(0, -33.333%, 0); } 69%, 96% { transform: translate3d(0, -66.666%, 0); } 100% { transform: translate3d(0, 0, 0); } }
 @keyframes mcht-caret { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
 .rise { animation: mcht-rise 1s var(--ease) both; animation-delay: var(--d, 0ms); }
+/* İlk ekran (LCP): metin baştan görünür, yalnızca kayar; opaklık animasyonu Google'ın en büyük içerik ölçümünü geciktiriyordu */
+@keyframes mcht-rise-lcp { from { transform: translate3d(0, 18px, 0); } to { transform: none; } }
+.rise-lcp { animation: mcht-rise-lcp .8s var(--ease) both; animation-delay: var(--d, 0ms); }
 .fade-in { animation: mcht-fade 1.2s var(--ease) both; animation-delay: var(--d, 0ms); }
 
 /* Sürekli animasyonlar yalnızca görünürken çalışır (Motion data-live="1" verir) */
