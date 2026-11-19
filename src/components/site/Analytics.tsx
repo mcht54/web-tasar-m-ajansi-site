@@ -56,9 +56,6 @@ export function Analytics({ gaId, gtmId }: { gaId: string; gtmId: string }) {
           <button type="button" className="mr-k" data-riza="1">Kabul et</button>
         </div>
       </div>
-      <p style={{ textAlign: "center", margin: "8px 0", fontSize: 13 }}>
-        <button type="button" className="mcht-riza-ac">Çerez tercihleri</button>
-      </p>
       <script id="mcht-olcum-js" dangerouslySetInnerHTML={{ __html: olcumJs(gaId) }} />
     </>
   );
