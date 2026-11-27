@@ -50,6 +50,11 @@ export function Footer({ nav, settings }: { nav: NavLinks; settings: AllSettings
             İşletmenizin web sitesini, Google profilini ve Instagram&apos;ını ücretsiz ölçün:{" "}
             <a href="https://markakarnem.com.tr/" className="text-snow underline underline-offset-4 hover:text-signal-2">Ücretsiz dijital karne · MarkaKarnem</a>
           </p>
+          {/* Kardeş ürün: hazır şablonla birkaç dakikada web sitesi */}
+          <p className="mt-2 text-sm text-snow/70">
+            Ajansla çalışmadan önce kendiniz denemek isterseniz{" "}
+            <a href="https://www.sitemucidi.com.tr/olustur" className="text-snow underline underline-offset-4 hover:text-signal-2">web sitenizi Site Mucidi hazırlasın</a>.
+          </p>
           {social.length > 0 && (
             <ul className="mt-4 flex flex-wrap gap-3 text-sm">
               {social.map(([k, v]) => (
