@@ -553,4 +553,331 @@ Kurumsal yapı hakkında genel öneriler için [kurumsal firma web sitesi](/kuru
       },
     ],
   },
+  {
+    slug: "doktor-muayenehane",
+    sectorName: "Doktor ve Muayenehane",
+    sortOrder: 11,
+    path: "/doktor-web-sitesi",
+    name: "Doktor Web Sitesi Tasarımı",
+    crumb: "Doktor",
+    seoTitle: "Doktor Web Sitesi Tasarımı | Muayenehane ve Poliklinikler İçin",
+    metaDescription:
+      "Muayenehane ve poliklinikler için doktor web sitesi: hekim özgeçmişi, ilgilenilen hastalıklar, randevu ve sağlık tanıtım kurallarına uygun içerik.",
+    h1: "Doktor Web Sitesi Tasarımı",
+    intro:
+      "Hastalar bir hekimi çoğu zaman adını Google'a yazarak araştırır. Doktor web sitesi bu aramada karşılarına çıkan ilk güvenilir kaynak olmalı: hekimin eğitimi, ilgilendiği hastalıklar, muayenehanenin adresi ve randevu yolu tek bir yerde, sakin bir dille anlatılmalı.",
+    primaryKeyword: "doktor web sitesi",
+    secondaryKeywords: ["doktor web sitesi tasarımı", "muayenehane web sitesi", "hekim web sitesi", "online randevu", "poliklinik web sitesi"],
+    body: `## Hasta siteye ne için gelir?
+
+Doktor sitelerine gelen ziyaretçilerin çoğu iki gruptan birindedir. Birinci grup hekimin adını bir yakınından duymuş ve doğrulamak istiyor: hangi okulda okumuş, hangi hastanelerde çalışmış, muayenehane nerede. İkinci grup bir şikâyetini arıyor ve sizin yazınıza ya da hastalık sayfanıza denk geliyor. İlk grup için özgeçmiş ve iletişim, ikinci grup için anlaşılır bilgi sayfaları gerekir.
+
+## Sağlık tanıtım kuralları
+
+Sağlık hizmetlerinin tanıtımı Türkiye'de mevzuatla sınırlıdır ve hekimin bağlı olduğu tabip odasının da görüşü vardır. Pratikte şu ilkeler sitenin her sayfasında geçerlidir:
+
+- Tedavi sonucuna garanti veren ya da "en iyi", "kesin çözüm" gibi ifadeler kullanılmaz.
+- Hasta yorumları, teşekkür mesajları ve önce/sonra görselleri risklidir; kullanmadan önce güncel düzenlemeye bakılmalıdır.
+- Unvan ve uzmanlık alanı belgede nasıl yazıyorsa sitede de öyle yazılır.
+
+Metinleri biz hazırlarız, yayından önce hekimin kendisi okur ve onaylar.
+
+## Bir doktor sitesinde olması gerekenler
+
+- Özgeçmiş: tıp fakültesi, uzmanlık eğitimi, çalıştığı kurumlar, üyelikler ve yayınlar.
+- İlgilenilen hastalıklar ve uygulanan işlemler: her biri için ayrı, sade dilde yazılmış bir sayfa.
+- Randevu: telefon, WhatsApp ya da form. Randevu sistemi kullanıyorsanız onun bağlantısı.
+- Muayenehane bilgileri: adres, harita, otopark, asansör, çalışma saatleri, anlaşmalı sigortalar.
+- Muayene öncesi bilgiler: yanınıza almanız gerekenler, aç gelinmesi gereken tetkikler gibi.
+
+## Önerdiğimiz sayfa yapısı
+
+Ana sayfanın ilk ekranında hekimin fotoğrafı, adı, unvanı ve "Randevu al" butonu yer alır. Hemen altında ilgilenilen başlıca konular ve muayenehane adresi gelir. Hastalık sayfaları kısa bir tanımla başlar, ardından belirtiler, tanı süreci ve tedavi seçenekleri anlatılır. Her sayfanın sonunda randevu yolu tekrar edilir.
+
+## Doktorlar için Google görünürlüğü
+
+Doktor aramalarının önemli bölümü "şehir + uzmanlık" ya da doğrudan hekim adıyla yapılır. Bu aramalarda Google İşletme Profili ile web sitesi birlikte çalışır: adres ve telefonun her yerde aynı olması, profilde sitenin bağlı olması ve uzmanlık alanının sitede açıkça yazması gerekir. Hastalık sayfaları ise bilgi aramalarından gelen hastaları getirir; bu sayfaların hekim tarafından kontrol edildiğini ve son güncelleme tarihini göstermek güven sağlar.
+
+Diş hekimleri için ayrı bir rehberimiz var: [diş kliniği web tasarımı](/dis-klinigi-web-tasarimi). Bütçe planlaması için [web tasarım fiyatları](/web-tasarim-fiyatlari) sayfasına bakabilirsiniz.`,
+    faq: [
+      {
+        q: "Hasta yorumlarını sitede yayınlayabilir miyiz?",
+        a: "Sağlık hizmetlerinde hasta yorumlarının tanıtım amacıyla kullanılması mevzuat açısından risklidir. Yayınlamadan önce güncel düzenlemeyi ve tabip odanızın görüşünü kontrol etmenizi öneriyoruz.",
+      },
+      {
+        q: "Hastanede çalışıyorum, kendi adıma site açabilir miyim?",
+        a: "Bu, çalıştığınız kurumla sözleşmenize ve kurumun kurallarına bağlıdır. Birçok hekim bilgilendirme amaçlı kişisel bir site kullanır; açmadan önce kurumunuza danışmanız iyi olur.",
+      },
+      {
+        q: "Online randevu sistemi şart mı?",
+        a: "Değil. Telefon ve WhatsApp ile randevu veren muayenehaneler için tıklanınca arayan bir buton yeterlidir. Randevu yoğunluğunuz yüksekse takvimli bir sistem bağlanabilir.",
+      },
+    ],
+  },
+  {
+    slug: "psikolog",
+    sectorName: "Psikolog ve Danışmanlık Merkezi",
+    sortOrder: 12,
+    path: "/psikolog-web-sitesi",
+    name: "Psikolog Web Sitesi Tasarımı",
+    crumb: "Psikolog",
+    seoTitle: "Psikolog Web Sitesi Tasarımı | Danışan Gizliliğine Saygılı Siteler",
+    metaDescription:
+      "Psikolog ve danışmanlık merkezleri için web sitesi: çalışma alanları, seans süreci, online terapi bilgisi ve gizliliği koruyan iletişim formu.",
+    h1: "Psikolog Web Sitesi Tasarımı",
+    intro:
+      "Psikolog arayan biri çoğu zaman ilk adımı atmakta zorlanır. Psikolog web sitesinin görevi bu adımı kolaylaştırmak: kiminle görüşeceğini, seansların nasıl geçtiğini ve nasıl randevu alacağını açıkça göstermek, bunu yaparken danışanın gizliliğine özen göstermek.",
+    primaryKeyword: "psikolog web sitesi",
+    secondaryKeywords: ["psikolog web sitesi tasarımı", "terapist web sitesi", "danışmanlık merkezi web sitesi", "online terapi", "psikolojik danışman"],
+    body: `## Danışan siteye geldiğinde neyi merak eder?
+
+Terapiye başlamayı düşünen kişinin soruları bellidir: Bu kişi benim yaşadığım konuyla çalışıyor mu? İlk görüşme nasıl geçiyor? Seans ne kadar sürüyor, ne sıklıkta? Online görüşme mümkün mü? Bu soruların yanıtı sitede yoksa ziyaretçi telefon açmak yerine başka bir siteye geçer.
+
+## Unvan ve etik
+
+Psikoloji alanında unvanlar birbirine karıştırılır: psikolog, klinik psikolog, psikolojik danışman ve psikiyatrist farklı eğitim ve yetkilere sahiptir. Sitede unvan diplomada ve belgede nasıl geçiyorsa öyle yazılmalı, uygulanan terapi yöntemleri için alınan eğitimler belirtilmelidir. Danışan hikâyeleri ve yorumları, kimlik gizlense bile mesleki etik açısından sorunludur; bu yüzden önermiyoruz.
+
+## Bir psikolog sitesinde olması gerekenler
+
+- Hakkımda sayfası: eğitim, unvan, aldığınız terapi eğitimleri ve süpervizyon bilgisi.
+- Çalışma alanları: kaygı, depresyon, çift terapisi, çocuk ve ergen gibi her alan için kısa ve sakin bir sayfa.
+- Süreç: ilk görüşme, seans süresi, sıklık, iptal kuralları ve gizlilik ilkesi.
+- Online terapi: hangi platformla yapıldığı ve teknik gereksinimler.
+- İletişim: adres, harita ve az alan soran bir form.
+
+## Gizliliği koruyan iletişim formu
+
+İletişim formu yalnızca ad, telefon ve uygun saat bilgisini istemeli. "Şikâyetinizi anlatın" gibi açık uçlu alanlar danışanı hassas bilgi yazmaya yöneltir ve bu bilgi e-posta kutularında korunmasız kalır. Formdan gelen bilgileri KVKK kapsamında nasıl sakladığınızı aydınlatma metninde açıklamak gerekir.
+
+## Önerdiğimiz sayfa yapısı
+
+Sakin renkler, gerçek bir portre fotoğrafı ve kısa bir karşılama metni. İlk ekranda "Ön görüşme için yazın" butonu. Altında çalışma alanları, seans süreci ve sık sorulan sorular. Blog yazıları kaygı, uyku, ilişkiler gibi sık aranan konularda bilgilendirici olmalı; teşhis koyar gibi yazılmamalı.
+
+## Psikologlar için arama görünürlüğü
+
+"Şehir + psikolog", "semt + çift terapisi", "online psikolog" gibi aramalar en çok danışan getiren aramalardır. Her çalışma alanı için ayrı sayfa açmak ve Google İşletme Profili'ni güncel tutmak bu aramalarda görünmenin temelidir. Online terapi veriyorsanız şehir dışından gelen aramalar için ayrı bir sayfa faydalı olur.
+
+Sağlık alanındaki diğer siteler için [doktor web sitesi](/doktor-web-sitesi) sayfamıza bakabilirsiniz.`,
+    faq: [
+      {
+        q: "Seans ücretini sitede yazmalı mıyız?",
+        a: "Zorunlu değil ama ücret ya da ücret aralığı yazan siteler daha az 'fiyat sormak için' arama alır ve gelen başvurular daha nitelikli olur. Karar sizin.",
+      },
+      {
+        q: "Danışmanlık merkezi olarak birden fazla terapisti nasıl tanıtırız?",
+        a: "Her terapist için ayrı profil sayfası açıp çalışma alanlarını profillere bağlarız. Danışan bir alan sayfasından o alanla çalışan terapistlere ulaşabilir.",
+      },
+    ],
+  },
+  {
+    slug: "veteriner",
+    sectorName: "Veteriner Kliniği",
+    sortOrder: 13,
+    path: "/veteriner-web-sitesi",
+    name: "Veteriner Kliniği Web Sitesi",
+    crumb: "Veteriner",
+    seoTitle: "Veteriner Kliniği Web Sitesi | Acil Durum, Randevu ve Hizmetler",
+    metaDescription:
+      "Veteriner kliniği web sitesinde acil iletişim, aşı takvimi, hizmet sayfaları ve randevu nasıl kurgulanır? Evcil hayvan sahiplerine göre tasarlanmış öneriler.",
+    h1: "Veteriner Kliniği Web Sitesi",
+    intro:
+      "Veteriner kliniği sitesine gelen kişi bazen bir aşı randevusu arıyor, bazen gece yarısı hasta bir kediyle ne yapacağını bilmiyor. Site iki duruma da cevap vermeli: acil durumda telefon ve adres saniyeler içinde bulunmalı, sakin zamanlarda hizmetler ve randevu yolu anlaşılır olmalı.",
+    primaryKeyword: "veteriner web sitesi",
+    secondaryKeywords: ["veteriner kliniği web sitesi", "veteriner web tasarımı", "pet kuaför", "aşı takvimi", "acil veteriner"],
+    body: `## Acil durum her şeyin önünde
+
+Veteriner sitelerinin telefondan açılma oranı çok yüksektir ve acil aramalar gece de gelir. Bu yüzden ilk ekranda "Hemen ara" butonu, açık adres ve çalışma saatleri yer almalı. Klinik 7/24 hizmet vermiyorsa bunu açıkça yazmak ve gece başvurulabilecek bir yeri belirtmek hayvan sahibinin zamanını kurtarır.
+
+## Bir veteriner sitesinde olması gerekenler
+
+- Hizmetler: muayene, aşılama, kısırlaştırma, cerrahi, diş bakımı, laboratuvar, görüntüleme, pansiyon ve pet kuaför gibi her hizmet için ayrı sayfa.
+- Baktığınız hayvanlar: kedi ve köpeğin yanında egzotik hayvan ya da büyükbaş bakıyorsanız bunu belirtin.
+- Aşı takvimi ve yavru bakımı rehberi: yeni sahiplenenlerin en çok aradığı bilgiler.
+- Hekim kadrosu: veteriner hekimlerin fotoğrafları ve ilgi alanları.
+- Randevu ve iletişim: telefon, WhatsApp, harita ve otopark bilgisi.
+
+## Meslek kuralları
+
+Veteriner hekimlerin tanıtımı da meslek kurallarıyla sınırlıdır. Abartılı vaatler ve başka kliniklerle karşılaştırma yapan ifadeler kullanılmamalı. Hasta sahibi yorumları ve tedavi öncesi/sonrası fotoğraflar konusunda bağlı olduğunuz veteriner hekimleri odasının görüşünü almanızı öneriyoruz.
+
+## Önerdiğimiz sayfa yapısı
+
+Üstte sabit bir telefon çubuğu, ilk ekranda kliniğin gerçek fotoğrafı ve "Randevu al" ile "Acil ara" butonları. Altında hizmetler, hekimler, çalışma saatleri ve harita. Rehber bölümünde aşı takvimi, kısırlaştırma sonrası bakım, yaz aylarında kene ve pire koruması gibi mevsimsel yazılar.
+
+## Veterinerler için yerel arama
+
+"Yakınımdaki veteriner", "semt + veteriner" ve "acil veteriner" aramalarında Google İşletme Profili belirleyicidir. Profildeki çalışma saatlerinin gerçek olması, sitedeki saatlerle aynı olması ve hizmet listesinin eksiksiz girilmesi gerekir. Sitede her hizmetin ayrı sayfası olması "kedi kısırlaştırma + şehir" gibi aramaları yakalar.
+
+Hizmetinizi bölgede duyurmak için [Google Ads yönetimi](/google-ads-yonetimi) ve [Instagram reklam yönetimi](/instagram-reklam-yonetimi) sayfalarımıza göz atabilirsiniz.`,
+    faq: [
+      {
+        q: "Aşı hatırlatma sistemi kurulabilir mi?",
+        a: "Kullandığınız klinik yazılımı hatırlatma gönderiyorsa siteyi ona bağlarız. Yoksa basit bir SMS ya da WhatsApp hatırlatma akışı ayrıca kurulabilir.",
+      },
+      {
+        q: "Pet shop ürünlerimizi sitede satabilir miyiz?",
+        a: "Evet, siteye küçük bir mağaza bölümü eklenebilir. Ürün sayısı fazlaysa ayrı bir e-ticaret yapısı daha doğru olur; ayrıntılar [e-ticaret web tasarım](/e-ticaret-web-tasarim) sayfamızda.",
+      },
+    ],
+  },
+  {
+    slug: "oto-servis-galeri",
+    sectorName: "Oto Servis ve Galeri",
+    sortOrder: 14,
+    path: "/oto-servis-galeri-web-sitesi",
+    name: "Oto Servis ve Galeri Web Sitesi",
+    crumb: "Oto Servis ve Galeri",
+    seoTitle: "Oto Servis ve Galeri Web Sitesi | Araç İlanı, Randevu ve Teklif",
+    metaDescription:
+      "Oto galeri ve servisler için web sitesi: araç ilan sayfaları, servis randevusu, fiyat teklifi formu ve yerel aramalarda görünür olma yolları.",
+    h1: "Oto Servis ve Galeri Web Sitesi",
+    intro:
+      "Araç alan da aracını servise götüren de karar vermeden önce internete bakar. Galeri sitesi stoktaki araçları ilan sitelerinden daha düzenli göstermeli, servis sitesi ise hangi işi yaptığınızı, hangi markalara baktığınızı ve nasıl randevu alınacağını açıkça anlatmalı.",
+    primaryKeyword: "oto galeri web sitesi",
+    secondaryKeywords: ["oto servis web sitesi", "galeri web sitesi", "araç ilan sitesi", "oto tamir", "servis randevusu"],
+    body: `## Galeri sitesi: ilan sitesinin ötesinde
+
+Galeriler araçlarını zaten ilan sitelerinde yayınlıyor. Kendi web siteniz bu ilanların kopyası olmamalı; güven veren ek bilgiler sunmalı: galerinin kaç yıldır aynı adreste olduğu, ekspertiz raporlarının paylaşılması, takas ve kredi seçenekleri, gerçek araç fotoğrafları. İkinci el araç ticareti yapan işletmelerin yetki belgesi bulunması gerekir; belge numarasını sitede göstermek alıcıya güven verir.
+
+Araç sayfalarında olması gerekenler:
+
+- Marka, model, yıl, kilometre, yakıt, vites, boya ve değişen bilgisi.
+- Ekspertiz raporu ve tramer bilgisi.
+- Telefon ve WhatsApp butonu, ilgili aracın adıyla birlikte giden hazır mesaj.
+- Satılan araçların "Satıldı" etiketiyle bir süre yayında kalması: galerinin gerçekten araç sattığını gösterir.
+
+## Servis sitesi: hangi işi yaptığınız net olmalı
+
+Servis arayan kişi genellikle bir arızayla ya da bakım zamanıyla gelir. Sitede baktığınız markalar, yaptığınız işler (periyodik bakım, motor, şanzıman, elektrik, kaporta boya, lastik, klima) ve garanti koşulları açıkça yazmalı. Her iş kalemi için ayrı sayfa, "şehir + marka + servis" aramalarında görünmenizi sağlar.
+
+## Randevu ve teklif
+
+Servisler için tarih ve saat seçilen basit bir randevu formu, kaporta ve boya işleri için fotoğraf yüklenebilen bir teklif formu iyi çalışır. Formun telefonda iki dakikada doldurulabilmesi gerekir.
+
+## Önerdiğimiz sayfa yapısı
+
+Galeri için ilk ekranda öne çıkan araçlar ve filtreleme; servis için hizmetler, markalar ve "Randevu al" butonu. Her iki türde de altta sabit "Ara" ve "WhatsApp" çubuğu, adres ve harita.
+
+## Yerel aramalar
+
+"Yakınımdaki oto servis", "şehir + marka özel servis", "şehir + oto galeri" aramalarında Google İşletme Profili ve yorumlar etkilidir. Gerçek müşterilerden yorum istemek, profile atölye ve araç fotoğrafları eklemek ve sitede aynı adres ile telefonu kullanmak gerekir.
+
+Kurumsal yapı hakkında genel öneriler için [kurumsal firma web sitesi](/kurumsal-firma-web-sitesi) sayfamıza bakabilirsiniz.`,
+    faq: [
+      {
+        q: "İlan sitesindeki araçlarımız otomatik olarak sitemize gelebilir mi?",
+        a: "Bu, ilan sitesinin veri aktarım imkânlarına bağlı. Aktarım yoksa araçları yönetim panelinden birkaç dakikada ekleyebileceğiniz bir yapı kurarız.",
+      },
+      {
+        q: "Servis fiyatlarını sitede yazmalı mıyız?",
+        a: "Periyodik bakım gibi standart işler için başlangıç fiyatı yazmak arama yapan müşteriyi telefona yönlendirir. Arıza işlerinde fiyat yerine teklif formu daha doğrudur.",
+      },
+    ],
+  },
+  {
+    slug: "egitim-kurumu",
+    sectorName: "Eğitim Kurumu ve Kurs",
+    sortOrder: 15,
+    path: "/egitim-kurumu-web-sitesi",
+    name: "Eğitim Kurumu ve Kurs Web Sitesi",
+    crumb: "Eğitim Kurumu",
+    seoTitle: "Eğitim Kurumu ve Kurs Web Sitesi | Program, Kayıt ve Veli Bilgisi",
+    metaDescription:
+      "Özel okul, dershane, dil ve sürücü kursları için web sitesi: program sayfaları, kayıt formu, veli bilgilendirmesi ve kayıt döneminde görünürlük.",
+    h1: "Eğitim Kurumu ve Kurs Web Sitesi",
+    intro:
+      "Eğitim kurumlarında karar çoğu zaman aile içinde, birkaç kurum karşılaştırılarak verilir. Okul ya da kurs sitesi bu karşılaştırmada öne çıkmak için programları, öğretmen kadrosunu, fiziksel ortamı ve kayıt sürecini açıkça göstermeli.",
+    primaryKeyword: "eğitim kurumu web sitesi",
+    secondaryKeywords: ["kurs web sitesi", "okul web sitesi", "dil kursu web sitesi", "etüt merkezi", "online kayıt"],
+    body: `## Veli ve öğrenci neye bakar?
+
+Veliler önce güveni arar: kurumun resmi izni, öğretmenlerin deneyimi, sınıf mevcudu, güvenlik ve ulaşım. Öğrenciler ise programın içeriğine, saatlerine ve ortamın nasıl göründüğüne bakar. Özel okul ve kursların Milli Eğitim Bakanlığı'ndan kurum açma izni bulunur; izin bilgisini sitede göstermek veliye güven verir.
+
+## Bir eğitim sitesinde olması gerekenler
+
+- Program sayfaları: her program ya da kurs için hedef, süre, haftalık ders saati, kontenjan ve başlangıç tarihleri.
+- Öğretmen kadrosu: branş, deneyim ve fotoğraf.
+- Kurumun fotoğrafları: sınıflar, laboratuvar, kütüphane, bahçe. Hazır görsel yerine gerçek fotoğraf.
+- Kayıt süreci: gerekli belgeler, ön kayıt formu, seviye tespit sınavı varsa tarihi.
+- Duyurular: kayıt dönemleri, sınav takvimi, etkinlikler.
+
+## Başarı ve ücret bilgisi
+
+Sınav başarısı paylaşmak yaygındır ama doğrulanabilir olmalıdır: hangi yıl, kaç öğrenci, hangi sınav. Abartılı ya da kaynağı belirsiz başarı iddiaları hem veliyi uzaklaştırır hem de reklam mevzuatı açısından sorun çıkarır. Ücret yazmak zorunlu değildir; yazılmıyorsa "ücret bilgisi için arayın" yerine ön kayıt formu daha iyi çalışır.
+
+## Önerdiğimiz sayfa yapısı
+
+İlk ekranda kurumun gerçek fotoğrafı, kısa tanıtım ve "Ön kayıt" butonu. Altında programlar, öğretmenler, kurumdan fotoğraflar ve sık sorulan sorular. Kayıt dönemlerinde ana sayfaya kayıt tarihlerini gösteren bir duyuru alanı eklenir.
+
+## Kayıt döneminde görünür olmak
+
+Eğitim aramaları mevsimseldir: yaz sonu, dönem arası ve sınav sonuçlarının açıklandığı haftalarda yoğunlaşır. "Şehir + dil kursu", "semt + etüt merkezi", "LGS hazırlık + şehir" gibi aramalarda görünmek için program sayfalarının kayıt döneminden en az iki ay önce yayında olması gerekir; yeni sayfaların Google'da yerini alması zaman alır. Kayıt dönemi için [Google Ads yönetimi](/google-ads-yonetimi) ile kısa süreli reklam da eklenebilir.`,
+    faq: [
+      {
+        q: "Online ön kayıt formundan gelen bilgileri nasıl saklamalıyız?",
+        a: "Form bilgileri yönetim panelinde saklanır ve size e-postayla bildirilir. Öğrenci ve veli bilgileri kişisel veri olduğu için KVKK aydınlatma metni formun yanında yer almalıdır.",
+      },
+      {
+        q: "Birden fazla şubemiz var, tek site yeterli mi?",
+        a: "Evet. Her şube için adres, telefon, harita ve o şubedeki programları anlatan ayrı bir sayfa açmak hem veliler hem de yerel aramalar için en iyi yöntemdir.",
+      },
+    ],
+  },
+  {
+    slug: "nakliyat",
+    sectorName: "Nakliyat",
+    sortOrder: 16,
+    path: "/nakliyat-web-sitesi",
+    name: "Nakliyat Firması Web Sitesi",
+    crumb: "Nakliyat",
+    seoTitle: "Nakliyat Firması Web Sitesi | Teklif Formu, Belgeler ve Yerel SEO",
+    metaDescription:
+      "Evden eve nakliyat ve taşımacılık firmaları için web sitesi: hızlı teklif formu, yetki belgeleri, sigorta bilgisi ve şehir aramalarında görünürlük.",
+    h1: "Nakliyat Firması Web Sitesi",
+    intro:
+      "Nakliyat firması arayan kişi eşyasını yabancılara emanet edecek. Bu yüzden fiyattan önce güven arar: firma gerçek mi, belgeleri var mı, eşyaya bir şey olursa ne olacak? Nakliyat web sitesi bu sorulara cevap vermeli ve teklif almayı birkaç dakikalık bir işe çevirmeli.",
+    primaryKeyword: "nakliyat web sitesi",
+    secondaryKeywords: ["evden eve nakliyat web sitesi", "nakliye firması web sitesi", "nakliyat teklif formu", "K3 yetki belgesi", "taşımacılık"],
+    body: `## Güven: belgeler ve gerçek bilgiler
+
+Evden eve eşya taşımacılığı yapan firmaların Ulaştırma ve Altyapı Bakanlığı'ndan K3 yetki belgesi alması gerekir. Belge numarasını sitede göstermek, müşterinin firmayı kayıt dışı taşıyıcılardan ayırmasını sağlar. Taşıma sigortası yapıyorsanız kapsamını ve nasıl işlediğini anlatın. Gerçek araç ve ekip fotoğrafları, açık adres ve sabit hat telefonu da güveni artırır.
+
+## Teklif formu sitenin merkezidir
+
+Nakliyat sitelerinde dönüşümün çoğu teklif formundan gelir. İyi bir teklif formu:
+
+- Nereden nereye, taşınma tarihi, ev büyüklüğü (1+1, 2+1, 3+1) ve kat bilgisini sorar.
+- Asansör, eşya paketleme ve depolama ihtiyacını işaretletir.
+- Fotoğraf ya da kısa video yüklemeye izin verir; keşfe gerek kalmadan fiyat vermeyi kolaylaştırır.
+- Telefonda iki dakikada doldurulabilir.
+
+Formun yanında doğrudan arama ve WhatsApp butonu da bulunmalı; bazı müşteriler yazmak yerine konuşmayı tercih eder.
+
+## Bir nakliyat sitesinde olması gerekenler
+
+- Hizmet sayfaları: evden eve, ofis taşıma, şehirler arası, parça eşya, asansörlü taşıma ve eşya depolama.
+- Taşınma süreci: keşif, paketleme, taşıma ve kurulum adımları.
+- Fiyatı etkileyen kalemler: mesafe, eşya miktarı, kat ve asansör durumu, paketleme.
+- Taşınma rehberi: kontrol listesi, kırılacak eşyaların paketlenmesi gibi faydalı yazılar.
+
+## Şehir ve güzergâh sayfaları
+
+Nakliyat aramaları neredeyse her zaman yer adıyla yapılır: "şehir + evden eve nakliyat", "semt + nakliyat", "şehir A şehir B nakliyat". Gerçekten hizmet verdiğiniz bölgeler ve sık taşıdığınız güzergâhlar için ayrı sayfa açmak bu aramaları yakalar. Her sayfa o bölgeye özgü bilgi içermeli: mesafe, tahmini süre, o güzergâhta dikkat edilecekler. Şehir adı değiştirilmiş kopya sayfalar Google tarafından spam sayılır.
+
+## Önerdiğimiz sayfa yapısı
+
+İlk ekranda kısa teklif formu ya da "Ücretsiz teklif al" butonu, yanında telefon. Altında hizmetler, belgeler ve sigorta, araç ve ekip fotoğrafları, hizmet bölgeleri ve sık sorulan sorular.
+
+Taşınma sezonunda talebi artırmak için [Google Ads yönetimi](/google-ads-yonetimi) sayfamıza bakabilirsiniz.`,
+    faq: [
+      {
+        q: "Sitede net fiyat yazmalı mıyız?",
+        a: "Nakliyatta fiyat eşya miktarına ve mesafeye göre değiştiği için net fiyat yerine fiyatı etkileyen kalemleri anlatmak ve hızlı teklif formu sunmak daha doğrudur.",
+      },
+      {
+        q: "Her ilçe için ayrı sayfa açmalı mıyız?",
+        a: "Yalnızca gerçekten hizmet verdiğiniz ve o bölgeye özgü bir şey söyleyebildiğiniz ilçeler için. Aynı metnin ilçe adı değiştirilmiş kopyaları sıralamaya zarar verir.",
+      },
+    ],
+  },
 ];

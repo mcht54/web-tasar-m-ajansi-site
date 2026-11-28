@@ -89,7 +89,7 @@ export class SiteGraph {
           );
         }
         add("related-services", "Diğer hizmetler", this.pub((n) => n.type === "SERVICE").sort(byOrder), 8);
-        add("sectors", "Sektöre özel çözümler", this.pub((n) => n.type === "SECTOR").sort(byOrder), 10);
+        add("sectors", "Sektöre özel çözümler", this.pub((n) => n.type === "SECTOR").sort(byOrder), 20);
         break;
       }
 
@@ -142,7 +142,7 @@ export class SiteGraph {
           this.pub((n) => n.type === "SECTOR_LOCATION" && n.sectorId === page.sectorId).sort(byName),
         );
         add("services", "İlgili hizmetler", this.pub((n) => n.type === "SERVICE").sort(byOrder), 6);
-        add("other-sectors", "Diğer sektörler", this.pub((n) => n.type === "SECTOR").sort(byOrder), 10);
+        add("other-sectors", "Diğer sektörler", this.pub((n) => n.type === "SECTOR").sort(byOrder), 20);
         break;
 
       case "SECTOR_LOCATION":
